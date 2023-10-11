@@ -6,7 +6,8 @@ import websocket
 import argparse
 import csv
 import os
-from . import ProcessingAPI_MacroLLM
+import pkg_resources
+
 # from .ProcessingAPI_MacroLLM import SignIn, ProcessSentences
 
 # def process_document(args):
@@ -30,7 +31,8 @@ from . import ProcessingAPI_MacroLLM
 #             CSVWriter.writerow([sentence, json.dumps(result)])
 
 def process_document(input: str, output: str, user: str, password: str, maxparallel=8):
-    os.system('python ./hawkish_dovish.py  -u ' + user + ' -p ' + password + ' -i ' + input + ' -o ' + output + ' -n ' + str(maxparallel))
+    script_path = pkg_resources.resource_filename('pronto_nlp', 'ProcessingAPI_MacroLLM.py')
+    os.system(f'python {script_path}  -u {user} -p {password} -i {input} -o {output} -n {str(maxparallel)}')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process document using Macro LLM.')
