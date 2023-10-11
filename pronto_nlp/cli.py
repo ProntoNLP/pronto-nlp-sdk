@@ -1,5 +1,5 @@
 import argparse
-from pronto_nlp import macro
+import macro
 
 def main():
     main_parser = argparse.ArgumentParser(description='Pronto-NLP Toolkit')
