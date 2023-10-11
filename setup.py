@@ -10,7 +10,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'pronto-nlp = cli:main',
+            'pronto-nlp = pronto_nlp.cli:main',
         ],
     },
 )
