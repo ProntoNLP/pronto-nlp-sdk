@@ -8,4 +8,9 @@ setup(
         'boto3',
         'websocket',
     ],
+    entry_points={
+        'console_scripts': [
+            'pronto-nlp = cli:main',
+        ],
+    },
 )
