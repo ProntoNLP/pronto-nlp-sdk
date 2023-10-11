@@ -30,7 +30,7 @@ from . import ProcessingAPI_MacroLLM
 #             CSVWriter.writerow([sentence, json.dumps(result)])
 
 def process_document(input: str, output: str, user: str, password: str, maxparallel=8):
-    os.system('python3 ./hawkish_dovish.py  -u ' + user + ' -p ' + password + ' -i ' + input + ' -o ' + output + ' -n ' + str(maxparallel))
+    os.system('python ./hawkish_dovish.py  -u ' + user + ' -p ' + password + ' -i ' + input + ' -o ' + output + ' -n ' + str(maxparallel))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process document using Macro LLM.')
