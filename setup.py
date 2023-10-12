@@ -6,7 +6,8 @@ setup(
     packages=find_packages(),
     install_requires=[
         'boto3',
-        'websocket',
+        'sagemaker',
+        'websocket-client',
     ],
     entry_points={
         'console_scripts': [
