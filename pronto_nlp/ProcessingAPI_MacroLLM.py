@@ -10,7 +10,7 @@ import csv
 def SignIn(user, password):
   requestObj = {"email": user, "password": password, "organization": "dev"}
   body = json.dumps(requestObj, ensure_ascii=True).encode('ascii')
-  request = urllib.request.Request("https://server-dev.prontonlp.com/token", data=body, headers={"Content-Type": "application/json"})
+  request = urllib.request.Request("https://server-staging.prontonlp.com/token", data=body, headers={"Content-Type": "application/json"})
   try:
     response = urllib.request.urlopen(request)
     if response.status == 200:
