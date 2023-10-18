@@ -7,7 +7,7 @@ from sagemaker.huggingface import HuggingFaceModel
 
 sagemaker_client = boto3.client('sagemaker')  
 
-def intialize_endpoint():
+def initialize_endpoint():
 
     # sagemaker config
     instance_type = "ml.g5.8xlarge"
@@ -52,6 +52,17 @@ def process_document(input: str, output: str, user: str, password: str, maxparal
     script_path = pkg_resources.resource_filename('pronto_nlp', 'ProcessingAPI_MacroLLM.py')
     os.system(f'python {script_path}  -u "{user}" -p "{password}" -i "{input}" -o "{output}" -n {str(maxparallel)}')
 
+def run(args):
+    # llm = initialize_endpoint()
+
+    if os.path.isfile(args['input']):
+        process_document(args['input'], args['output'], args['user'], args['password'], args['maxparallel'])
+    elif os.path.isdir(args['input']):
+        for file in os.listdir(args['input']):
+            process_document(os.path.join(args['input'], file), args['output'], args['user'], args['password'], args['maxparallel'])
+    
+    # llm.delete_endpoint()
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process document using Macro LLM.')
     parser.add_argument('-u', '--user', type=str, required=True)
@@ -61,14 +72,4 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--maxparallel', type=int, help='Maximal number of sentences processed in parallel', default=8)
     args = vars(parser.parse_args())
 
-    llm = intialize_endpoint()
-
-    if os.path.isfile(args['input']):
-        process_document(args['input'], args['output'], args['user'], args['password'], args['maxparallel'])
-    elif os.path.isdir(args['input']):
-        for file in os.listdir(args['input']):
-            process_document(os.path.join(args['input'], file), args['output'], args['user'], args['password'], args['maxparallel'])
-    
-    llm.delete_endpoint()
-
-    # python pronto_nlp/macro.py -u ... -p ... -i _DocForMacroTest.TXT -o RESULTS.CSV
+    run(args)
