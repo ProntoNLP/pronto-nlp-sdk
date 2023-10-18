@@ -2,6 +2,7 @@
     "cSpell.words": [
         "boto",
         "huggingface",
-        "maxparallel"
+        "maxparallel",
+        "rulesets"
     ]
 }
