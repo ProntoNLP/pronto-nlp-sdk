@@ -16,10 +16,11 @@ pip install git+https://github.com/ProntoNLP/pronto-nlp-sdk.git
 
 You can use Pronto NLP SDK in your Python code as follows:
 
+**Macro Module:**
 ```python
 from pronto_nlp import macro
 
-# Process a document
+# Process document using Macro LLM.
 macro.process_document(
     input="input.txt",
     output="output.csv",
@@ -28,10 +29,72 @@ macro.process_document(
 )
 ```
 
+**Fief Module:**
+```python
+from pronto_nlp import fief
+
+# Generate a signal CSV using FIEF Server.
+success = fief.generate_signal_csv(
+    ruleset="Alpha",
+    db="SEC_10K.db3",
+    startdate="2021-01-01",
+    enddate="2021-12-31",
+    tickerlist="SnP-500",
+    tags="#DocItem_Answer #SpeakerType_Executives_CEO",
+    outputCSV="output_signal.csv",
+    user="user@example.com",
+    password="password"
+)
+print(success)  # True if successful, False otherwise
+
+# Generate a Find Matches CSV using FIEF Server.
+success = fief.generate_find_matches_csv(
+    ruleset="Alpha",
+    events=".*",
+    db="SEC_10K.db3",
+    startdate="2021-01-01",
+    enddate="2021-12-31",
+    tickerlist="SnP-500",
+    tags="#DocItem_Answer #SpeakerType_Executives_CEO",
+    outputCSV="output_matches.csv",
+    metadata=True,
+    user="user@example.com",
+    password="password"
+)
+print(success)  # True if successful, False otherwise
+
+# List parse cache databases available on the FIEF Server.
+success = fief.list_parse_cache_dbs(
+    user="user@example.com",
+    password="password"
+)
+print(success)  # True if successful, False otherwise
+
+# List rulesets available for a user on the FIEF Server.
+success = fief.list_rulesets(
+    user="user@example.com",
+    password="password"
+)
+print(success)  # True if successful, False otherwise
+
+# Process a corpus using FIEF Server.
+success = fief.process_corpus(
+    ruleset="Users/username/rulesetname",
+    inputCSV="input_corpus.csv",
+    outputCSV="output_corpus.csv",
+    user="user@example.com",
+    password="password",
+    outputtype="XML",
+    numthreads=10
+)
+print(success)  # True if successful, False otherwise
+```
+
 ### From Command Line Interface (CLI)
 
 You can also use Pronto NLP SDK from the command line:
 
+Macro Commands
 ```bash
 pronto_nlp macro process_document -u "user@example.com" -p "password" -i input.txt -o output.csv
 ```
