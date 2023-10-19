@@ -2,11 +2,11 @@ from setuptools import setup, find_packages
 
 setup(
     name='pronto_nlp',
-    version='0.1.12',
+    version='0.1.13',
     packages=find_packages(),
     install_requires=[
         'boto3',
-        'sagemaker',
+        'gevent',
         'websocket-client',
     ],
     entry_points={
