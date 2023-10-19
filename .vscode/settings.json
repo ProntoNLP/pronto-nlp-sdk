@@ -3,6 +3,7 @@
         "boto",
         "huggingface",
         "maxparallel",
+        "ruleset",
         "rulesets"
     ]
 }

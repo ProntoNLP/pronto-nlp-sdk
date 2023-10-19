@@ -36,10 +36,9 @@ from pronto_nlp import fief
 # Generate a signal CSV using FIEF Server.
 success = fief.generate_signal_csv(
     ruleset="Alpha",
-    db="SEC_10K.db3",
+    db="SnP_Transcripts_ParseCache.db3",
     startdate="2021-01-01",
     enddate="2021-12-31",
-    tickerlist="SnP-500",
     tags="#DocItem_Answer #SpeakerType_Executives_CEO",
     outputCSV="output_signal.csv",
     user="user@example.com",
@@ -51,10 +50,9 @@ print(success)  # True if successful, False otherwise
 success = fief.generate_find_matches_csv(
     ruleset="Alpha",
     events=".*",
-    db="SEC_10K.db3",
+    db="SnP_Transcripts_ParseCache.db3",
     startdate="2021-01-01",
     enddate="2021-12-31",
-    tickerlist="SnP-500",
     tags="#DocItem_Answer #SpeakerType_Executives_CEO",
     outputCSV="output_matches.csv",
     metadata=True,
@@ -101,9 +99,9 @@ pronto_nlp macro process_document -u "user@example.com" -p "password" -i input.t
 
 Fief Commands
 ```bash
-pronto_nlp fief generate_signal_csv -u "user@example.com" -p "password" -r "Alpha" -d "SEC_10K.db3" -s "2021-01-01" -e "2021-12-31" -t "SnP-500" -g "#DocItem_Answer #SpeakerType_Executives_CEO" output.csv
+pronto_nlp fief generate_signal_csv -u "user@example.com" -p "password" -r "Alpha" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-12-31" -t "SnP-500" -g "#DocItem_Answer #SpeakerType_Executives_CEO" output.csv
 
-pronto_nlp fief generate_find_matches_csv -u "user@example.com" -p "password" -r "Alpha" -v ".*" -d "SEC_10K.db3" -s "2021-01-01" -e "2021-12-31" -t "SnP-500" -g "#DocItem_Answer #SpeakerType_Executives_CEO" -m output.csv
+pronto_nlp fief generate_find_matches_csv -u "user@example.com" -p "password" -r "Alpha" -v ".*" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-12-31" -t "SnP-500" -g "#DocItem_Answer #SpeakerType_Executives_CEO" -m output.csv
 
 pronto_nlp fief list_parse_cache_dbs -u "user@example.com" -p "password"
 
@@ -120,10 +118,9 @@ pronto_nlp fief process_corpus -u "user@example.com" -p "password" -r "Users/use
 - `password` (str): Your password.
 - `maxparallel` (int, optional): Maximal number of sentences processed in parallel. Default is 8.
 - `ruleset` (str, optional): Name of the ruleset (e.g. "Alpha" or "ESG").
-- `db` (str, optional): Name of the parse cache database (e.g. "SEC_10K.db3").
+- `db` (str, optional): Name of the parse cache database (e.g. "SnP_Transcripts_ParseCache.db3").
 - `startdate` (str, optional): Start date (YYYY-MM-DD).
 - `enddate` (str, optional): End date (YYYY-MM-DD).
-- `tickerlist` (str, optional): Ticker list name (e.g. "SnP-500").
 - `tags` (str, optional): Tags (e.g. "#DocItem_Answer #SpeakerType_Executives_CEO").
 - `events` (str, optional): Regexp specifying events to extract (e.g. ".*" or "Acquisitions|Dividend").
 - `metadata` (bool, optional): Download extra metadata flag, set to true to download extra metadata.
