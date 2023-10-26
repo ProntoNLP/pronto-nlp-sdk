@@ -1,0 +1,26 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: generate_signal_csv",
+            "type": "python",
+            "request": "launch",
+            "program": "C:/Users/ilayo/OneDrive/Desktop/Repositories/pronto-nlp-sdk/pronto_nlp/cli.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": ["fief", "generate_signal_csv", "-u", "demo", "-p", "prontodemo", "-r", "Alpha", "-d", "SnP_Transcripts_ParseCache.db3", "-s", "2021-01-01", "-e", "2021-12-31", "-g", "#DocType_EarningsCalls_Answer #SpeakerType_Executives_CEO", "singal_output.csv"]
+        },
+        {
+            "name": "Python: generate_find_matches_csv",
+            "type": "python",
+            "request": "launch",
+            "program": "C:/Users/ilayo/OneDrive/Desktop/Repositories/pronto-nlp-sdk/pronto_nlp/cli.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": ["fief", "generate_find_matches_csv", "-u", "demo", "-p", "prontodemo", "-r", "Alpha", "-v", ".*", "-d", "SnP_Transcripts_ParseCache.db3", "-s", "2021-01-01", "-e", "2021-01-31", "-g", "#SpeakerType_Executives_CEO", "-m", "output.csv"]
+        }
+    ]
+}

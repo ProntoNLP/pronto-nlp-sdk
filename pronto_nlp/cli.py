@@ -78,7 +78,7 @@ def main():
             script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_ProcessCorpus.py')
 
     if script_path:
-        command_string = f'python {script_path} ' + " ".join([f"--{key} \"{value}\"" if key not in ('inputCSV', 'outputCSV') else f"\"{value}\"" for key, value in vars(args).items() if key not in ('command', 'sub_command') and value is not None])
+        command_string = f'python {script_path} ' + " ".join([(f"--{key} \"{value}\"" if key not in ('metadata') else f"--{key}") if key not in ('inputCSV', 'outputCSV') else f"\"{value}\"" for key, value in vars(args).items() if key not in ('command', 'sub_command') and value is not None])
         os.system(command_string)
 
 if __name__ == '__main__':
