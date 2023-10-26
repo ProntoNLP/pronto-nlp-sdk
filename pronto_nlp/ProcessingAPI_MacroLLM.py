@@ -1,3 +1,4 @@
+import re
 import sys
 import json
 import urllib.request
@@ -8,9 +9,19 @@ import csv
 
 
 def SignIn(user, password):
-  requestObj = {"email": user, "password": password, "organization": "dev"}
+  organization = "dev"
+  M = re.match(r'^(.*?):(.*)$', user)
+  if M:
+    organization = M.group(1)
+    user = M.group(2)
+  authURL = ("https://server-staging.prontonlp.com/token" if (organization == "dev" or organization == "stage") else
+             "https://server-prod.prontonlp.com/token")
+
+  requestObj = {"email": user, "password": password, "organization": organization}
   body = json.dumps(requestObj, ensure_ascii=True).encode('ascii')
-  request = urllib.request.Request("https://server-staging.prontonlp.com/token", data=body, headers={"Content-Type": "application/json"})
+  request = urllib.request.Request(authURL, data=body,
+                                   headers={"Content-Type": "application/json",
+                                            "pronto-granted": "R$w#8k@Pmz%2x2Dg#5fGz"})
   try:
     response = urllib.request.urlopen(request)
     if response.status == 200:
