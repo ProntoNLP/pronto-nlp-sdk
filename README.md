@@ -99,9 +99,9 @@ pronto_nlp macro process_document -u "user@example.com" -p "password" -i input.t
 
 Fief Commands
 ```bash
-pronto_nlp fief generate_signal_csv -u "user@example.com" -p "password" -r "Alpha" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-01-02" -t "SnP-500" -g "#DocItem_Answer #SpeakerType_Executives_CEO" output_signal.csv
+pronto_nlp fief generate_signal_csv -u "user@example.com" -p "password" -r "Alpha" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-01-02" -g "#DocItem_Answer #SpeakerType_Executives_CEO" output_signal.csv
 
-pronto_nlp fief generate_find_matches_csv -u "user@example.com" -p "password" -r "Alpha" -v ".*" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-01-02" -t "SnP-500" -g "#DocItem_Answer #SpeakerType_Executives_CEO" -m output_matches.csv
+pronto_nlp fief generate_find_matches_csv -u "user@example.com" -p "password" -r "Alpha" -v ".*" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-01-02"-g "#DocItem_Answer #SpeakerType_Executives_CEO" -m output_matches.csv
 
 pronto_nlp fief list_parse_cache_dbs -u "user@example.com" -p "password"
 
