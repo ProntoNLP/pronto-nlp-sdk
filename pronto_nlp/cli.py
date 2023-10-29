@@ -1,6 +1,7 @@
 import argparse
 import os
 import pkg_resources
+from pronto_nlp import generate_command_string
 
 def main():
     main_parser = argparse.ArgumentParser(description='Pronto-NLP Toolkit')
@@ -78,8 +79,7 @@ def main():
             script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_ProcessCorpus.py')
 
     if script_path:
-        command_string = f'python {script_path} ' + " ".join([(f"--{key} \"{value}\"" if key not in ('metadata') else f"--{key}") if key not in ('inputCSV', 'outputCSV') else f"\"{value}\"" for key, value in vars(args).items() if key not in ('command', 'sub_command') and value is not None])
-        os.system(command_string)
+        os.system(generate_command_string(script_path, parameters=vars(args)))
 
 if __name__ == '__main__':
     main()
