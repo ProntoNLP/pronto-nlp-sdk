@@ -25,7 +25,7 @@ def SignIn(user, password):
   if M:
     organization = M.group(1)
     user = M.group(2)
-  authURL = ("https://server-staging.prontonlp.com/token" if (organization == "dev" or organization == "stage") else
+  authURL = ("https://server-staging.prontonlp.com/token" if (organization == "dev" or organization == "staging") else
              "https://server-prod.prontonlp.com/token")
 
   requestObj = {"email": user, "password": password, "organization": organization}
