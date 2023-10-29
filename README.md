@@ -38,7 +38,7 @@ success = fief.generate_signal_csv(
     ruleset="Alpha",
     db="SnP_Transcripts_ParseCache.db3",
     startdate="2021-01-01",
-    enddate="2021-12-31",
+    enddate="2021-01-02",
     tags="#DocItem_Answer #SpeakerType_Executives_CEO",
     outputCSV="output_signal.csv",
     user="user@example.com",
@@ -52,7 +52,7 @@ success = fief.generate_find_matches_csv(
     events=".*",
     db="SnP_Transcripts_ParseCache.db3",
     startdate="2021-01-01",
-    enddate="2021-12-31",
+    enddate="2021-12-02",
     tags="#DocItem_Answer #SpeakerType_Executives_CEO",
     outputCSV="output_matches.csv",
     metadata=True,
@@ -99,15 +99,15 @@ pronto_nlp macro process_document -u "user@example.com" -p "password" -i input.t
 
 Fief Commands
 ```bash
-pronto_nlp fief generate_signal_csv -u "user@example.com" -p "password" -r "Alpha" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-12-31" -t "SnP-500" -g "#DocItem_Answer #SpeakerType_Executives_CEO" output.csv
+pronto_nlp fief generate_signal_csv -u "user@example.com" -p "password" -r "Alpha" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-01-02" -t "SnP-500" -g "#DocItem_Answer #SpeakerType_Executives_CEO" output_signal.csv
 
-pronto_nlp fief generate_find_matches_csv -u "user@example.com" -p "password" -r "Alpha" -v ".*" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-12-31" -t "SnP-500" -g "#DocItem_Answer #SpeakerType_Executives_CEO" -m output.csv
+pronto_nlp fief generate_find_matches_csv -u "user@example.com" -p "password" -r "Alpha" -v ".*" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-01-02" -t "SnP-500" -g "#DocItem_Answer #SpeakerType_Executives_CEO" -m output_matches.csv
 
 pronto_nlp fief list_parse_cache_dbs -u "user@example.com" -p "password"
 
 pronto_nlp fief list_rulesets -u "user@example.com" -p "password"
 
-pronto_nlp fief process_corpus -u "user@example.com" -p "password" -r "Users/username/rulesetname" -o XML -n 10 input.csv output.csv
+pronto_nlp fief process_corpus -u "user@example.com" -p "password" -r "Users/username/rulesetname" -o XML -n 10 input_corpus.csv output_corpus.csv
 ```
 
 ## Parameters
