@@ -12,6 +12,15 @@ pip install git+https://github.com/ProntoNLP/pronto-nlp-sdk.git
 
 ## Usage
 
+### User Authentication
+Users must authenticate each request with their org:username and password.
+Your org name appears in the URL used for accessing the ProntoNLP platform.
+For example, if your URL to access the ProntoNLP platform is:
+'prontofund.prontonlp.com'
+
+Then your username for all API requests should be:
+prontofund:user@example.com
+
 ### From Code
 
 You can use Pronto NLP SDK in your Python code as follows:
@@ -22,9 +31,9 @@ from pronto_nlp import macro
 
 # Process document using Macro LLM.
 macro.process_document(
-    input="input.txt",
-    output="output.csv",
-    user="user@example.com",
+    input="input_macro.txt",
+    output="output_macro.csv",
+    user="org:user@example.com",
     password="password"
 )
 ```
@@ -38,10 +47,10 @@ success = fief.generate_signal_csv(
     ruleset="Alpha",
     db="SnP_Transcripts_ParseCache.db3",
     startdate="2021-01-01",
-    enddate="2021-01-02",
-    tags="#DocItem_Answer #SpeakerType_Executives_CEO",
+    enddate="2021-12-31",
+    tags="#DocType_EarningsCalls #SpeakerType_Executives_CEO #Sector_Energy",
     outputCSV="output_signal.csv",
-    user="user@example.com",
+    user="org:user@example.com",
     password="password"
 )
 print(success)  # True if successful, False otherwise
@@ -51,39 +60,39 @@ success = fief.generate_find_matches_csv(
     ruleset="Alpha",
     events=".*",
     db="SnP_Transcripts_ParseCache.db3",
-    startdate="2021-01-01",
-    enddate="2021-12-02",
-    tags="#DocItem_Answer #SpeakerType_Executives_CEO",
+    startdate="2022-01-01",
+    enddate="2022-04-31",
+    tags="#Sector_Financials #SpeakerType_Executives_CFO",
     outputCSV="output_matches.csv",
     metadata=True,
-    user="user@example.com",
-    password="password"
-)
-print(success)  # True if successful, False otherwise
-
-# List parse cache databases available on the FIEF Server.
-success = fief.list_parse_cache_dbs(
-    user="user@example.com",
-    password="password"
-)
-print(success)  # True if successful, False otherwise
-
-# List rulesets available for a user on the FIEF Server.
-success = fief.list_rulesets(
-    user="user@example.com",
+    user="org:user@example.com",
     password="password"
 )
 print(success)  # True if successful, False otherwise
 
 # Process a corpus using FIEF Server.
 success = fief.process_corpus(
-    ruleset="Users/username/rulesetname",
+    ruleset="Alpha",
     inputCSV="input_corpus.csv",
     outputCSV="output_corpus.csv",
-    user="user@example.com",
+    user="org:user@example.com",
     password="password",
-    outputtype="XML",
+    outputtype="events",
     numthreads=10
+)
+print(success)  # True if successful, False otherwise
+
+# List parse cache databases available on the FIEF Server.
+success = fief.list_parse_cache_dbs(
+    user="org:user@example.com",
+    password="password"
+)
+print(success)  # True if successful, False otherwise
+
+# List rulesets available for a user on the FIEF Server.
+success = fief.list_rulesets(
+    user="org:user@example.com",
+    password="password"
 )
 print(success)  # True if successful, False otherwise
 ```
@@ -94,27 +103,27 @@ You can also use Pronto NLP SDK from the command line:
 
 Macro Commands
 ```bash
-pronto_nlp macro process_document -u "user@example.com" -p "password" -i input.txt -o output.csv
+pronto_nlp macro process_document -u "org:user@example.com" -p "password" -i input.txt -o output.csv
 ```
 
 Fief Commands
 ```bash
-pronto_nlp fief generate_signal_csv -u "user@example.com" -p "password" -r "Alpha" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-01-02" -g "#DocItem_Answer #SpeakerType_Executives_CEO" output_signal.csv
+pronto_nlp fief generate_signal_csv -u "org:user@example.com" -p "password" -r "Alpha" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-12-31" -g "#DocType_EarningsCalls #SpeakerType_Executives_CEO #Sector_Energy" output_signal.csv
 
-pronto_nlp fief generate_find_matches_csv -u "user@example.com" -p "password" -r "Alpha" -v ".*" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-01-02"-g "#DocItem_Answer #SpeakerType_Executives_CEO" -m output_matches.csv
+pronto_nlp fief generate_find_matches_csv -u "org:user@example.com" -p "password" -r "Alpha" -v ".*" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-04-31"-g "#Sector_ConsumerStaples #SpeakerType_Executives" -m output_matches.csv
 
-pronto_nlp fief list_parse_cache_dbs -u "user@example.com" -p "password"
+pronto_nlp fief list_parse_cache_dbs -u "org:user@example.com" -p "password"
 
-pronto_nlp fief list_rulesets -u "user@example.com" -p "password"
+pronto_nlp fief list_rulesets -u "org:user@example.com" -p "password"
 
-pronto_nlp fief process_corpus -u "user@example.com" -p "password" -r "Users/username/rulesetname" -o XML -n 10 input_corpus.csv output_corpus.csv
+pronto_nlp fief process_corpus -u "org:user@example.com" -p "password" -r "Alpha" -o events -n 10 input_corpus.csv output_corpus.csv
 ```
 
 ## Parameters
 
 - `input` (str): Path to the input text file.
 - `output` (str): Path to the output CSV file.
-- `user` (str): Your username.
+- `user` (str): Your org:username.
 - `password` (str): Your password.
 - `maxparallel` (int, optional): Maximal number of sentences processed in parallel. Default is 8.
 - `ruleset` (str, optional): Name of the ruleset (e.g. "Alpha" or "ESG").
