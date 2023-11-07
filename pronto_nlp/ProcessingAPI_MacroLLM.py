@@ -1,3 +1,4 @@
+import os
 import re
 import sys
 import json
@@ -6,6 +7,12 @@ import boto3
 import websocket
 import argparse
 import csv
+
+
+if os.environ.get("AWS_FIEF_STAGE", "prod") == "prod":
+  URL_WSS_LLMAPI = "wss://wss.prontonlp.net/llmapi"
+else:
+  URL_WSS_LLMAPI = "wss://9v62gujku4.execute-api.us-west-2.amazonaws.com/dev"
 
 
 def SignIn(user, password):
@@ -39,39 +46,6 @@ def SignIn(user, password):
   return authToken
 
 
-def ProcessDoc_websocketAPI(authToken, ruleset, outputtype, text):
-  ws = websocket.create_connection("wss://3c5qlj48hi.execute-api.us-west-2.amazonaws.com/main")
-  try:
-    iAt = 0
-    iIndex = 0
-    while iAt < len(text) - 20000:
-      #print(f"Storing {iIndex} {iAt}", file=sys.stderr)
-      ws.send(json.dumps({'request': 'WSProcessDoc-StoreData', 'authtoken': authToken,
-                          'index': iIndex, 'data': text[iAt:iAt+20000]}))
-      ack = ws.recv()
-      #print(f"Storing-ack {ack}", file=sys.stderr)
-      if json.loads(ack)['Collected'] != iIndex: raise Exception("Incorrect store-data acknowledgement")
-      iAt += 20000
-      iIndex += 1
-
-    #print(f"WSProcessDoc", file=sys.stderr)
-    ws.send(json.dumps({'request': 'WSProcessDoc', 'authtoken': authToken,
-                        'ruleset': ruleset, 'outputtype': outputtype, 'text': text[iAt:]}))
-
-    #print(f"Receiving", file=sys.stderr)
-    iSize = int(ws.recv())
-    #print(f"Received size {iSize}", file=sys.stderr)
-    result = ""
-    while len(result) < iSize:
-      #print(f"Receiving next", file=sys.stderr)
-      result += json.loads(ws.recv())
-
-    return result
-
-  finally:
-    ws.close()
-
-
 def ReadMessageFromWebsocket(ws):
   body = ws.recv()
   if not body:
@@ -87,7 +61,7 @@ def ReadMessageFromWebsocket(ws):
 def ProcessSentences(authToken, sentences, progressReportCallback=None, iMaxParallel=8):
   results = [None for _ in sentences]
   iCountResults = 0
-  ws = websocket.create_connection("wss://cxyh53vkmj.execute-api.us-west-2.amazonaws.com/main")
+  ws = websocket.create_connection(URL_WSS_LLMAPI, header={"Authorization":authToken})
   try:
     iAt = 0
     iInFlight = 0
