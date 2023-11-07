@@ -1,6 +1,7 @@
 from gevent import monkey, spawn, sleep
 monkey.patch_all()
 
+import os
 import sys
 import re
 import json
@@ -17,6 +18,14 @@ from FindMatches_Misc_JS import AddNewMatchForFindMatches, GetAllDocIDsForFindMa
 from SelectRelation_ExtraMetadata_JS import GetFirstBatchOfDocIDsToDownloadExtraMetadataForDocIDSet, AddNewExtraMetadata, GetNextBatchOfDocIDsToDownloadExtraMetadata
 from SignalGeneration_Misc_JS import AddNewFullSignalData, GetAllDocIDsForSignals, GenerateSignalCSV_ProcessingAPI
 
+
+if os.environ.get("AWS_FIEF_STAGE", "prod") == "prod":
+  URL_FIEFServer = "https://prontonlp.net/fiefserver/main"
+  #URL_FIEFServer = "https://prontonlp.net/fiefserver/prod"
+  URL_WSS_FindMatches = "wss://wss.prontonlp.net/findmatches"
+else:
+  URL_FIEFServer = "https://p20246a2j8.execute-api.us-west-2.amazonaws.com/dev"
+  URL_WSS_FindMatches = "wss://engw20u7je.execute-api.us-west-2.amazonaws.com/dev"
 
 
 def SignIn(user, password):
@@ -64,7 +73,7 @@ def GetListRulesets(authToken):
   requestObj = {
     "request": "GetRulesetsList",
   }
-  requestResult = PerformFIEFRequest(authToken, 'https://prontonlp.net/fiefserver/main/guihelper', requestObj)
+  requestResult = PerformFIEFRequest(authToken, f'{URL_FIEFServer}/guihelper', requestObj)
   return requestResult['rulesets']
 
 
@@ -73,7 +82,7 @@ def GetListRelationsForRuleset(authToken, ruleset):
     "request": "GetRelationTypesList",
     "ruleset": ruleset
   }
-  requestResult = PerformFIEFRequest(authToken, 'https://prontonlp.net/fiefserver/main/guihelper', requestObj)
+  requestResult = PerformFIEFRequest(authToken, f'{URL_FIEFServer}/guihelper', requestObj)
   return requestResult['relationtypes'][1]
 
 
@@ -81,7 +90,7 @@ def GetListDBs(authToken):
   requestObj = {
     "request": "GetParseCacheDBList",
   }
-  requestResult = PerformFIEFRequest(authToken, 'https://prontonlp.net/fiefserver/main/guihelper', requestObj)
+  requestResult = PerformFIEFRequest(authToken, f'{URL_FIEFServer}/guihelper', requestObj)
   return requestResult['DBs']
 
 
@@ -92,12 +101,12 @@ def ProcessDoc_RESTAPI(authToken, ruleset, outputtype, text):
     "outputtype": outputtype,
     "text": text
   }
-  requestResult = PerformFIEFRequest(authToken, 'https://prontonlp.net/fiefserver/main', requestObj)
+  requestResult = PerformFIEFRequest(authToken, f'{URL_FIEFServer}', requestObj)
   return requestResult['data']
 
 
 def ProcessDoc_websocketAPI(authToken, ruleset, outputtype, text):
-  ws = websocket.create_connection("wss://3c5qlj48hi.execute-api.us-west-2.amazonaws.com/main")
+  ws = websocket.create_connection(URL_WSS_FindMatches, header={"Authorization":authToken})
   try:
     iAt = 0
     iIndex = 0
@@ -230,7 +239,7 @@ def GenerateSignalCSV(authToken, sRuleset, sDB, sStartDate=None, sEndDate=None, 
 
   #JScontext = CreateJSContext()
 
-  ws = websocket.create_connection("wss://3c5qlj48hi.execute-api.us-west-2.amazonaws.com/main")
+  ws = websocket.create_connection(URL_WSS_FindMatches, header={"Authorization":authToken})
   try:
     ws.send(json.dumps({'authtoken': authToken,
                         'DB': [sDB], 'ruleset':rulesets, 'rule':rules,
@@ -274,7 +283,7 @@ def GenerateFindMatchesCSV(authToken, sRuleset, DBsList, sRule, sStartDate=None,
 
   if isinstance(DBsList, str): DBsList = DBsList.split(';')
 
-  ws = websocket.create_connection("wss://3c5qlj48hi.execute-api.us-west-2.amazonaws.com/main")
+  ws = websocket.create_connection(URL_WSS_FindMatches, header={"Authorization":authToken})
 
   try:
     ws.send(json.dumps({'authtoken': authToken,
