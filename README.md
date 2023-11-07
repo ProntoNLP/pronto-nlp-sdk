@@ -19,13 +19,14 @@ For example, if your URL to access the ProntoNLP platform is:
 'prontofund.prontonlp.com'
 
 Then your username for all API requests should be:
-prontofund:user@example.com
+
+`prontofund:user@example.com`
 
 ### From Code
 
 You can use Pronto NLP SDK in your Python code as follows:
 
-**Macro Module:**
+**Macro Module**
 ```python
 from pronto_nlp import macro
 
@@ -38,7 +39,7 @@ macro.process_document(
 )
 ```
 
-**Fief Module:**
+**FIEF Module**
 ```python
 from pronto_nlp import fief
 
@@ -97,16 +98,25 @@ success = fief.list_rulesets(
 print(success)  # True if successful, False otherwise
 ```
 
+**Custom Rulesets**
+
+Users can also run Find Matches and Process Corpus functions using a Custom Ruleset built on the Platform.  
+Simply reference the ruleset as:  ruleset="Users/org/ruleset-name"
+
+```python
+ruleset="Users/prontofund/prontofundAlpha"
+```
+
 ### From Command Line Interface (CLI)
 
 You can also use Pronto NLP SDK from the command line:
 
-Macro Commands
+**Macro Commands**
 ```bash
 pronto_nlp macro process_document -u "org:user@example.com" -p "password" -i input.txt -o output.csv
 ```
 
-Fief Commands
+**FIEF Commands**
 ```bash
 pronto_nlp fief generate_signal_csv -u "org:user@example.com" -p "password" -r "Alpha" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-12-31" -g "#DocType_EarningsCalls #SpeakerType_Executives_CEO #Sector_Energy" output_signal.csv
 
