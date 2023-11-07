@@ -104,7 +104,7 @@ Users can also run Find Matches and Process Corpus functions using a Custom Rule
 Simply reference the ruleset as:  ruleset="Users/org/ruleset-name"
 
 ```python
-ruleset="Users/prontofund/prontofundAlpha"
+ruleset="Users/prontofund/pfAlpha"
 ```
 
 ### From Command Line Interface (CLI)
