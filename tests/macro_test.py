@@ -1,9 +1,10 @@
 from pronto_nlp import macro
 
-success = macro.process_document(
-    input="tests/_DocForMacroTest.txt",
+print('Processing document')
+allResults = macro.process_document(
+    input="../samples/_DocForMacroTest.txt",
     output="output.csv",
-    user="ilay@dooble.co.il",
-    password="Ilay6969"
+    user="user@example.com",
+    password="password"
 )
-print(success)
+print(allResults)

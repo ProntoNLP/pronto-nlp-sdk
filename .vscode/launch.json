@@ -8,19 +8,58 @@
             "name": "Python: generate_signal_csv",
             "type": "python",
             "request": "launch",
-            "program": "C:/Users/ilayo/OneDrive/Desktop/Repositories/pronto-nlp-sdk/pronto_nlp/cli.py",
+            "program": "pronto_nlp/cli.py",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["fief", "generate_signal_csv", "-u", "demo", "-p", "prontodemo", "-r", "Alpha", "-d", "SnP_Transcripts_ParseCache.db3", "-s", "2021-01-01", "-e", "2021-12-31", "-g", "#DocType_EarningsCalls_Answer #SpeakerType_Executives_CEO", "singal_output.csv"]
+            "args": ["fief", "generate_signal_csv", "-u", "user@example.com", "-p", "password", "-r", "Alpha", "-d", "SnP_Transcripts_ParseCache.db3", "-s", "2021-01-01", "-e", "2021-12-31", "-g", "#DocType_EarningsCalls_Answer #SpeakerType_Executives_CEO", "singal_output.csv"],
+            "env": {
+                "GEVENT_SUPPORT": "True"
+            },
         },
         {
             "name": "Python: generate_find_matches_csv",
             "type": "python",
             "request": "launch",
-            "program": "C:/Users/ilayo/OneDrive/Desktop/Repositories/pronto-nlp-sdk/pronto_nlp/cli.py",
+            "program": "pronto_nlp/cli.py",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["fief", "generate_find_matches_csv", "-u", "demo", "-p", "prontodemo", "-r", "Alpha", "-v", ".*", "-d", "SnP_Transcripts_ParseCache.db3", "-s", "2021-01-01", "-e", "2021-01-31", "-g", "#SpeakerType_Executives_CEO", "-m", "output.csv"]
+            "args": ["fief", "generate_find_matches_csv", "-u", "user@example.com", "-p", "password", "-r", "Alpha", "-v", ".*", "-d", "SnP_Transcripts_ParseCache.db3", "-s", "2021-01-01", "-e", "2021-01-31", "-g", "#SpeakerType_Executives_CEO", "-m", "output.csv"],
+            "env": {
+                "GEVENT_SUPPORT": "True"
+            },
+        },
+        {
+            "name": "Python: list_parse_cache_dbs",
+            "type": "python",
+            "request": "launch",
+            "program": "pronto_nlp/cli.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": ["fief", "list_parse_cache_dbs", "-u", "user@example.com", "-p", "password"],
+            "env": {
+                "GEVENT_SUPPORT": "True"
+            },
+        },
+        {
+            "name": "Python: list_rulesets",
+            "type": "python",
+            "request": "launch",
+            "program": "pronto_nlp/cli.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": ["fief", "list_rulesets", "-u", "user@example.com", "-p", "password"],
+            "env": {
+                "GEVENT_SUPPORT": "True"
+            },
+        },
+        {
+            "name": "Run tests",
+            "type": "python",
+            "request": "launch",
+            "program": "tests/fief_test.py",
+            "env": {
+                "GEVENT_SUPPORT": "True"
+            },
         }
     ]
 }

@@ -2,7 +2,7 @@ import re
 import json
 import sys
 
-from SelectRelation_ExtraMetadata_JS import GetExtraMetadataColumns, GetExtraMetadataColumnValues, MakeCSVField
+from .SelectRelation_ExtraMetadata_JS import GetExtraMetadataColumns, GetExtraMetadataColumnValues, MakeCSVField
 
 
 reEvent = re.compile(r'<EVENT([^>]*)>(.*?)</EVENT>')
