@@ -1,5 +1,5 @@
+from . import fief, macro
 import argparse
-from . import macro, fief
 
 def main():
     main_parser = argparse.ArgumentParser(description='Pronto-NLP Toolkit')

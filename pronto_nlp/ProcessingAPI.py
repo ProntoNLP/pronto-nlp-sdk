@@ -1,6 +1,7 @@
-from gevent import monkey, spawn, sleep
+from gevent import monkey
 monkey.patch_all()
 
+from gevent import spawn, sleep
 import os
 import sys
 import re
