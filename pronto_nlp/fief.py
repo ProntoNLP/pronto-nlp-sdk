@@ -1,6 +1,5 @@
-import os
-import pkg_resources
-from pronto_nlp import generate_command_string
+import csv
+from . import ProcessingAPI
 
 def generate_signal_csv(ruleset: str, db: str, startdate: str, enddate: str, tags: str, outputCSV: str, user: str, password: str):
     """
@@ -17,13 +16,20 @@ def generate_signal_csv(ruleset: str, db: str, startdate: str, enddate: str, tag
         password (str): The password for authentication.
 
     Returns:
-        bool: True if the signal generation was successful, False otherwise.
+        signalCSV (str): The generated CSV file containing the signal.
     """
-    script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_DownloadCachedSignal.py')
-    parameters = {'ruleset': ruleset, 'db': db, 'startdate': startdate, 'enddate': enddate, 'tags': tags, 'outputCSV': outputCSV, 'user': user, 'password': password}
-    success = os.system(generate_command_string(script_path, parameters))
 
-    return bool(not success)
+    authToken = ProcessingAPI.SignIn(user, password)
+    print("Authentication successful")
+
+    def ProgressReport(sMsg): print(sMsg, end='\r')
+    signalCSV = ProcessingAPI.GenerateSignalCSV(authToken, ruleset, db, startdate, enddate, None, tags, ProgressReport)
+    print()
+
+    with open(outputCSV, "w", encoding="utf-8", errors="ignore") as FOutCSV:
+        FOutCSV.write(signalCSV)
+    
+    return signalCSV
 
 def generate_find_matches_csv(ruleset: str, events: str, db: str, startdate: str, enddate: str, tags: str, outputCSV: str, metadata: bool, user: str, password: str):
     """
@@ -42,15 +48,23 @@ def generate_find_matches_csv(ruleset: str, events: str, db: str, startdate: str
         password (str): The password for authentication.
 
     Returns:
-        bool: True if the matching process was successful, False otherwise.
+        matchesCSV (str): The generated CSV file containing the matching results.
     """
-    script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_FindMatches.py')
-    parameters = {'ruleset': ruleset, 'events': events, 'db': db, 'startdate': startdate, 'enddate': enddate, 'tags': tags, 'metadata': metadata, 'outputCSV': outputCSV, 'user': user, 'password': password}
-    success = os.system(generate_command_string(script_path, parameters))
 
-    return bool(not success)
+    authToken = ProcessingAPI.SignIn(user, password)
+    print("Authentication successful")
 
-def list_parse_cache_dbs(user: str, password: str):
+    def ProgressReport(sMsg): print(sMsg, end='\r')
+    sRule = "<" + events + ">"
+    matchesCSV = ProcessingAPI.GenerateFindMatchesCSV(authToken, ruleset, db, sRule, startdate, enddate, None, tags, ProgressReport, metadata)
+    print()
+
+    with open(outputCSV, "w", encoding="utf-8", errors="ignore") as FOutCSV:
+        FOutCSV.write(matchesCSV)
+
+    return matchesCSV
+
+def list_parse_cache_dbs(user: str, password: str, print_output: bool = False):
     """
     List the parse cache databases for a given user and password.
 
@@ -59,15 +73,32 @@ def list_parse_cache_dbs(user: str, password: str):
         password (str): The password for authentication.
 
     Returns:
-        bool: True if the matching process was successful, False otherwise.
+        DBs (list): A list of parse cache databases and their tags.
     """
-    script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_ListDBs.py')
-    parameters = {'user': user, 'password': password}
-    success = os.system(generate_command_string(script_path, parameters))
 
-    return bool(not success)
+    authToken = ProcessingAPI.SignIn(user, password)
+    print("Authentication successful")
 
-def list_rulesets(user: str, password: str):
+    def print_tags(tagsTree, prefix=None):
+        name = tagsTree[0].replace(' ', '')
+        if name:
+            prefix = prefix + '_' + name if prefix else name
+        if tagsTree[2]:
+            print("  #" + prefix)
+        for subTree in tagsTree[1]:
+            print_tags(subTree, prefix)
+
+    DBs = ProcessingAPI.GetListDBs(authToken)
+
+    if print_output:
+        for sDB, tags in DBs:
+            print(sDB)
+            print_tags(tags)
+            print()
+
+    return DBs
+
+def list_rulesets(user: str, password: str, print_output: bool = False):
     """
     List the rulesets for a given user.
 
@@ -76,13 +107,24 @@ def list_rulesets(user: str, password: str):
         password (str): The password for authentication.
 
     Returns:
-        bool: True if the matching process was successful, False otherwise.
+        rulesets (dict): A dictionary of ruleset names and their relations.
     """
-    script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_ListRulesets.py')
-    parameters = {'user': user, 'password': password}
-    success = os.system(generate_command_string(script_path, parameters))
 
-    return bool(not success)
+    authToken = ProcessingAPI.SignIn(user, password)
+    print("Authentication successful")
+
+    rulesets = {}
+    ruleset_names = ProcessingAPI.GetListRulesets(authToken)
+    for ruleset_name in ruleset_names:
+        rulesets[ruleset_name] = ProcessingAPI.GetListRelationsForRuleset(authToken, ruleset_name)
+
+        if print_output:
+            print(ruleset_name)
+            for r in rulesets[ruleset_name]:
+                print("  " + r)
+            print()
+
+    return rulesets
 
 def process_corpus(ruleset: str, inputCSV: str, outputCSV: str, user: str, password: str, outputtype: ('XML', 'JSON', 'events') = 'XML', numthreads: int = 10):
     """
@@ -98,10 +140,42 @@ def process_corpus(ruleset: str, inputCSV: str, outputCSV: str, user: str, passw
         outputtype (str): The format of the output file. Defaults to 'XML'.
 
     Returns:
-        bool: True if the corpus processing was successful, False otherwise.
+        outputCSV (str): The path to the generated CSV file containing the processing results.
     """
-    script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_ProcessCorpus.py')
-    parameters = {'ruleset': ruleset, 'inputCSV': inputCSV, 'outputCSV': outputCSV, 'user': user, 'password': password, 'outputtype': outputtype, 'numthreads': numthreads}
-    success = os.system(generate_command_string(script_path, parameters))
 
-    return bool(not success)
+    authToken = ProcessingAPI.SignIn(user, password)
+    print("Authentication successful")
+
+    with open(inputCSV, "r", encoding="utf-8", errors="ignore") as FCSV:
+        CSVReader = csv.reader(FCSV, csv.excel)
+        headers = next(CSVReader)
+        iTextColumn = -1
+        for i, h in enumerate(headers):
+            if h in ['document', 'doc', 'text', 'content', 'contents', 'input', 'sentence', 'article_text']:
+                iTextColumn = i
+                break
+        if iTextColumn < 0: raise Exception("Missing document text column ('document', or 'text', or 'content', etc...)")
+
+        iResultColumn = len(headers)
+        headers.append('processing results')
+        with open(outputCSV, "w", encoding="utf-8", errors="ignore") as FOutCSV:
+            CSVWriter = csv.writer(FOutCSV, lineterminator='\n')
+            CSVWriter.writerow(headers)
+
+            if(numthreads > 1):
+                for row, result in ProcessingAPI.DoBatchProcessing(authToken, ruleset, outputtype, CSVReader, getTextFunc=lambda row: row[iTextColumn], numThreads=numthreads):
+                    while len(row) <= iResultColumn: row.append("")
+                    row[iResultColumn] = result
+                    CSVWriter.writerow(row)
+
+                else:
+                    for iDoc, row in enumerate(CSVReader):
+                        print(f"Processing doc: {iDoc+1}", end='\r')
+                        text = row[iTextColumn].strip()
+                        result = ProcessingAPI.ProcessDoc(authToken, ruleset, outputtype, text) if text else ""
+                        while len(row) <= iResultColumn: row.append("")
+                        row[iResultColumn] = result
+                        CSVWriter.writerow(row)
+                    print()
+
+    return outputCSV

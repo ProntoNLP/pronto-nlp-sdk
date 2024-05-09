@@ -1,6 +1,7 @@
 from pronto_nlp import fief
 
-success = fief.generate_signal_csv(
+print('Generating signal CSV')
+signalCSV = fief.generate_signal_csv(
     ruleset="Alpha",
     db="SnP_Transcripts_ParseCache.db3",
     startdate="2021-01-01",
@@ -10,9 +11,10 @@ success = fief.generate_signal_csv(
     user="user@example.com",
     password="password",
 )
-print(success)
+print(signalCSV)
 
-success = fief.generate_find_matches_csv(
+print('Generating find matches CSV')
+matchesCSV = fief.generate_find_matches_csv(
     ruleset="Alpha",
     events=".*",
     db="SnP_Transcripts_ParseCache.db3",
@@ -24,27 +26,30 @@ success = fief.generate_find_matches_csv(
     user="user@example.com",
     password="password",
 )
-print(success)
+print(matchesCSV)
 
-success = fief.list_parse_cache_dbs(
+print('Listing parse cache DBs')
+dbs = fief.list_parse_cache_dbs(
     user="user@example.com",
     password="password",
 )
-print(success)
+print(dbs)
 
-success = fief.list_rulesets(
+print('Listing rulesets')
+rulesets = fief.list_rulesets(
     user="user@example.com",
     password="password",
 )
-print(success)
+print(rulesets)
 
-success = fief.process_corpus(
+print('Processing corpus')
+resultsCSV = fief.process_corpus(
     ruleset="Alpha",
-    inputCSV="input_corpus.csv",
+    inputCSV="../samples/api_demo.csv",
     outputCSV="output_corpus.csv",
     user="user@example.com",
     password="password",
     outputtype="events",
     numthreads=10
 )
-print(success)
+print(resultsCSV)

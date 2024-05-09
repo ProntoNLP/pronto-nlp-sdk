@@ -1,7 +1,5 @@
+from . import fief, macro
 import argparse
-import os
-import pkg_resources
-from pronto_nlp import generate_command_string
 
 def main():
     main_parser = argparse.ArgumentParser(description='Pronto-NLP Toolkit')
@@ -60,26 +58,24 @@ def main():
     process_corpus_parser.add_argument('outputCSV', type=str, help='Path to the output CSV file')
 
     args = main_parser.parse_args()
-    script_path = None
+
+    args_items = vars(args)
 
     if args.command == 'macro':
         if args.sub_command == 'process_document':
-            script_path = pkg_resources.resource_filename('pronto_nlp', 'ProcessingAPI_MacroLLM.py')
+            macro.process_document(args_items['input'], args_items['output'], args_items['user'], args_items['password'], args_items['maxparallel'])
 
     if args.command == 'fief':
         if args.sub_command == 'generate_signal_csv':
-            script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_DownloadCachedSignal.py')
+            fief.generate_signal_csv(args_items['ruleset'], args_items['db'], args_items['startdate'], args_items['enddate'], args_items['tags'], args_items['outputCSV'], args_items['user'], args_items['password'])
         if args.sub_command == 'generate_find_matches_csv':
-            script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_FindMatches.py')
+            fief.generate_find_matches_csv(args_items['ruleset'], args_items['events'], args_items['db'], args_items['startdate'], args_items['enddate'], args_items['tags'], args_items['outputCSV'], args_items['metadata'], args_items['user'], args_items['password'])
         if args.sub_command == 'list_parse_cache_dbs':
-            script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_ListDBs.py')
+            fief.list_parse_cache_dbs(args_items['user'], args_items['password'], True)
         if args.sub_command == 'list_rulesets':
-            script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_ListRulesets.py')
+            fief.list_rulesets(args_items['user'], args_items['password'], True)
         if args.sub_command == 'process_corpus':
-            script_path = pkg_resources.resource_filename('pronto_nlp', 'ProntoAPI/FIEFServerAWS_ProcessCorpus.py')
-
-    if script_path:
-        os.system(generate_command_string(script_path, parameters=vars(args)))
+            fief.process_corpus(args_items['ruleset'], args_items['inputCSV'], args_items['outputCSV'], args_items['user'], args_items['password'], args_items['outputtype'], args_items['numthreads'])
 
 if __name__ == '__main__':
     main()

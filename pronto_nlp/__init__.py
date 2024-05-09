@@ -1,2 +1,0 @@
-def generate_command_string(script_path, parameters):
-    return f'python {script_path} ' + " ".join([(f"--{key} \"{value}\"" if key not in ('metadata') else f"--{key}") if key not in ('inputCSV', 'outputCSV') else f"\"{value}\"" for key, value in parameters.items() if key not in ('command', 'sub_command') and value is not None])

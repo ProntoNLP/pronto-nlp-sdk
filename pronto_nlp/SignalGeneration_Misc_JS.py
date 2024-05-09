@@ -1,6 +1,6 @@
 import re
 
-from SelectRelation_ExtraMetadata_JS import GetExtraMetadataColumns, GetExtraMetadataColumnValues
+from .SelectRelation_ExtraMetadata_JS import GetExtraMetadataColumns, GetExtraMetadataColumnValues
 
 
 # "Ticker,Date" -> [ #allSentences, #AllDLPos, #AllDLNeg, #AllDLPosDiscounted, #AllDLNegDiscounted,
