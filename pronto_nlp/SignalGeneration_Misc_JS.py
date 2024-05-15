@@ -1,4 +1,5 @@
 import re
+import sys
 
 from .SelectRelation_ExtraMetadata_JS import GetExtraMetadataColumns, GetExtraMetadataColumnValues
 
@@ -71,6 +72,37 @@ def GenerateSignalCSV_ProcessingAPI():
   sortedEventKeys = sorted(eventKeysSet)
   sortedSignalData.sort()
 
+  fUseImportanceWeights = any(ik in E for ik in ["- High -", "- Medium -", "- Low -"] for E in sortedEventKeys)
+  #print(sortedEventKeys, file=sys.stderr)
+  if fUseImportanceWeights:
+    importanceWeights = [[1, 1, 1], [4, 2, 1], [3, 1, 0], [1, 1, 0]]
+    importanceScoreColumns = [f"Event{P}_{W[0]}_{W[1]}_{W[2]}" for W in importanceWeights for P in ["Pos", "Neg", "sScore"]]
+    def CalcImportanceColumnValues(ETInfoCopy):
+      counts = [0, 0, 0, 0, 0, 0]  # HighPos, HighNeg, MediumPos, MediumNeg, LowPos, LowNeg
+      for [sEventKey, iCount] in ETInfoCopy.items():
+        if sEventKey.endswith(" - Positive"):
+          pol = 0
+          sEventKey = sEventKey[:-len(" - Positive")]
+        elif sEventKey.endswith(" - Negative"):
+          pol = 1
+          sEventKey = sEventKey[:-len(" - Negative")]
+        else: continue
+        if sEventKey.endswith(" - High"):
+          imp = 0
+        elif sEventKey.endswith(" - Medium"):
+          imp = 1
+        elif sEventKey.endswith(" - Low"):
+          imp = 2
+        else: continue
+        counts[imp*2 + pol] += iCount
+      values = []
+      for W in importanceWeights:
+        iPos = sum(counts[i*2] * W[i] for i in range(3))
+        iNeg = sum(counts[i*2+1] * W[i] for i in range(3))
+        score = (iPos - iNeg) / (iPos + iNeg + 1)
+        values.extend([iPos, iNeg, score])
+      return values
+
   fIsTranscript = True
   fIsMacro = False
   extraMetadataColumnsUpperCase = [C.upper() for C in GetExtraMetadataColumns()]
@@ -84,14 +116,16 @@ def GenerateSignalCSV_ProcessingAPI():
         fIsTranscript = (sCorpus == 'transcripts')
         fIsMacro = (sCorpus == 'federalreserveboard' or sCorpus == 'bankofengland' or sCorpus == 'europeancentralbank')
         break
-  fUseGrowth = fIsTranscript and (ContainsAnyWColumn(GrowthEventsPos, eventKeysSet) or ContainsAnyWColumn(GrowthEventsNeg, eventKeysSet))
-  fUseValue = fIsTranscript and (ContainsAnyWColumn(ValueEventsPos, eventKeysSet) or ContainsAnyWColumn(ValueEventsNeg, eventKeysSet))
+  fUseGrowth = not fUseImportanceWeights and fIsTranscript and (ContainsAnyWColumn(GrowthEventsPos, eventKeysSet) or ContainsAnyWColumn(GrowthEventsNeg, eventKeysSet))
+  fUseValue = not fUseImportanceWeights and fIsTranscript and (ContainsAnyWColumn(ValueEventsPos, eventKeysSet) or ContainsAnyWColumn(ValueEventsNeg, eventKeysSet))
 
   columns = ((["DocDate,DocID"] if fIsMacro else ["DocDate,Ticker,DocID"])
              + GetExtraMetadataColumns()
-             + (["Sentences", "LLMDove", "LLMHawk", "AllLLMDove", "AllLLMHawk", "EventDove", "EventHawk"] if fIsMacro else
+             + (["Sentences"] + importanceScoreColumns if fUseImportanceWeights else
+                ["Sentences", "LLMDove", "LLMHawk", "AllLLMDove", "AllLLMHawk", "EventDove", "EventHawk"] if fIsMacro else
                 ["Sentences", "DLPos", "DLNeg", "AllDLPos", "AllDLNeg", "EventPos", "EventNeg"])
-             + (["Combined Sentiment Score", "LLM Sentiment Score", "Events Sentiment Score"] if fIsMacro else
+             + ([] if fUseImportanceWeights else
+                ["Combined Sentiment Score", "LLM Sentiment Score", "Events Sentiment Score"] if fIsMacro else
                 ["Combined Sentiment Score", "DL Sentiment Score", "Events Sentiment Score"])
              + (["GrowthWeightedPos", "GrowthWeightedNeg", "GrowthWeighted Sentiment Score"] if fUseGrowth else [])
              + (["ValueWeightedPos", "ValueWeightedNeg", "ValueWeighted Sentiment Score"] if fUseValue else [])
@@ -112,8 +146,10 @@ def GenerateSignalCSV_ProcessingAPI():
     sFirstValues = re.sub(r',[^,]*,', ',', dateTickerDocID) if fIsMacro else dateTickerDocID
     rowData = ([sFirstValues]
                + GetExtraMetadataColumnValues(dateTickerDocID)
-               + [allSentences, AllDLPosDiscounted-EPos, AllDLNegDiscounted-ENeg, AllDLPos, AllDLNeg, EPos, ENeg]
-               + [dCombinedSentimentScore, dDLSentimentScore, dEventsSentimentScore]
+               + [allSentences]
+               + (CalcImportanceColumnValues(ETInfoCopy) if fUseImportanceWeights else
+                   [AllDLPosDiscounted-EPos, AllDLNegDiscounted-ENeg, AllDLPos, AllDLNeg, EPos, ENeg] +
+                   [dCombinedSentimentScore, dDLSentimentScore, dEventsSentimentScore])
                + (CalcWeightedColumns(EPos, ENeg, GrowthEventsPos, GrowthEventsNeg, ETInfoCopy) if fUseGrowth else [])
                + (CalcWeightedColumns(EPos, ENeg, ValueEventsPos, ValueEventsNeg, ETInfoCopy) if fUseValue else [])
                   )
@@ -141,6 +177,10 @@ def CopyFullSignalData(fullSignalData):
       if ENeu > 0: ETInfoCopy[ET + " - Neutral"]  = ENeu;
     signalData[dateTickerDocID] = [allSentences, AllDLPos, AllDLNeg, DLPosDiscounted, DLNegDiscounted, SumEPos, SumENeg, ETInfoCopy]
   return signalData
+
+
+def InitFullSignalData():
+  FullSignalData.clear()
 
 
 def AddNewFullSignalData(dataList):

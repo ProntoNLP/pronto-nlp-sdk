@@ -16,7 +16,7 @@ print(signalCSV)
 print('Generating find matches CSV')
 matchesCSV = fief.generate_find_matches_csv(
     ruleset="Alpha",
-    events=".*",
+    events="Revenue",
     db="SnP_Transcripts_ParseCache.db3",
     startdate="2021-01-01",
     enddate="2021-01-02",
@@ -45,7 +45,7 @@ print(rulesets)
 print('Processing corpus')
 resultsCSV = fief.process_corpus(
     ruleset="Alpha",
-    inputCSV="../samples/api_demo.csv",
+    inputCSV="../samples/UserDocsTest.csv",
     outputCSV="output_corpus.csv",
     user="user@example.com",
     password="password",

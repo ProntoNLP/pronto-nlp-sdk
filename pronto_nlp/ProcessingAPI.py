@@ -25,8 +25,8 @@ if os.environ.get("AWS_FIEF_STAGE", "prod") == "prod":
   #URL_FIEFServer = "https://prontonlp.net/fiefserver/prod"
   URL_WSS_FindMatches = "wss://wss.prontonlp.net/findmatches"
 else:
-  URL_FIEFServer = "https://p20246a2j8.execute-api.us-west-2.amazonaws.com/dev"
-  URL_WSS_FindMatches = "wss://engw20u7je.execute-api.us-west-2.amazonaws.com/dev"
+  URL_FIEFServer = "https://ydqxlfd2b0.execute-api.us-west-2.amazonaws.com/dev"  # p20246a2j8
+  URL_WSS_FindMatches = "wss://nnxvpvfo0j.execute-api.us-west-2.amazonaws.com/dev"  # engw20u7je
 
 
 def SignIn(user, password):
@@ -259,7 +259,7 @@ def GenerateSignalCSV(authToken, sRuleset, sDB, sStartDate=None, sEndDate=None, 
     if fDownloadExtraMetadata:
       if progressReportCallback: progressReportCallback("\n")
       allDocIDs = GetAllDocIDsForSignals() # JScontext.
-      DownloadExtraMetadata(authToken, ws, allDocIDs, progressReportCallback) # JScontext,
+      DownloadExtraMetadata(authToken, ws, [sDB], allDocIDs, progressReportCallback) # JScontext,
 
     return GenerateSignalCSV_ProcessingAPI()  # JScontext.
 
@@ -267,11 +267,11 @@ def GenerateSignalCSV(authToken, sRuleset, sDB, sStartDate=None, sEndDate=None, 
     ws.close()
 
 
-def DownloadExtraMetadata(authToken, ws, allDocIDs, progressReportCallback):  # JScontext,
+def DownloadExtraMetadata(authToken, ws, DBsList, allDocIDs, progressReportCallback):  # JScontext,
   docIDs, iCountDocs = GetFirstBatchOfDocIDsToDownloadExtraMetadataForDocIDSet(allDocIDs, iMaxDocIDs=123)  # JScontext.
   while docIDs:
     if progressReportCallback: progressReportCallback(f"Downloading document information: {iCountDocs} docs remaining  ")
-    ws.send(json.dumps({'authtoken': authToken, 'request': 'GetExtraMetadata', 'DocIDs': docIDs}))
+    ws.send(json.dumps({'authtoken': authToken, 'request': 'GetExtraMetadata', 'DocIDs': docIDs, 'DB': ';'.join(DBsList) }))
     message = ReadMessageFromWebsocket(ws)
     if not message or 'ExtraMetadata' not in message: continue
     iCountDocs = AddNewExtraMetadata(message['ExtraMetadata'])  # JScontext.
@@ -356,7 +356,7 @@ def GenerateFindMatchesCSV(authToken, sRuleset, DBsList, sRule, sStartDate=None,
       if fIsStopping and fDownloadExtraMetadata:
         if progressReportCallback: progressReportCallback("\n")
         allDocIDs = GetAllDocIDsForFindMatches()  # JScontext.
-        DownloadExtraMetadata(authToken, ws, allDocIDs, progressReportCallback)  # JScontext,
+        DownloadExtraMetadata(authToken, ws, DBsList, allDocIDs, progressReportCallback)  # JScontext,
 
       if fIsStopping: break
 
