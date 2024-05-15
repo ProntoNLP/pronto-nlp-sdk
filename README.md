@@ -59,7 +59,7 @@ print(success)  # True if successful, False otherwise
 # Generate a Find Matches CSV using FIEF Server.
 success = fief.generate_find_matches_csv(
     ruleset="Alpha",
-    events=".*",
+    events="Revenue|Margin",
     db="SnP_Transcripts_ParseCache.db3",
     startdate="2022-01-01",
     enddate="2022-04-31",
