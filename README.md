@@ -26,19 +26,6 @@ Then your username for all API requests should be:
 
 You can use Pronto NLP SDK in your Python code as follows:
 
-**Macro Module**
-```python
-from pronto_nlp import macro
-
-# Process document using Macro LLM.
-macro.process_document(
-    input="input_macro.txt",
-    output="output_macro.csv",
-    user="org:user@example.com",
-    password="password"
-)
-```
-
 **FIEF Module**
 ```python
 from pronto_nlp import fief
@@ -110,11 +97,6 @@ ruleset="Users/prontofund/pfAlpha"
 ### From Command Line Interface (CLI)
 
 You can also use Pronto NLP SDK from the command line:
-
-**Macro Commands**
-```bash
-pronto_nlp macro process_document -u "org:user@example.com" -p "password" -i input.txt -o output.csv
-```
 
 **FIEF Commands**
 ```bash
