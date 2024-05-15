@@ -190,6 +190,11 @@ FM_AllMatches = []
 FM_AllMatchesSentences2Index = {}
 FM_AllRows = []
 
+def InitFindMatches():
+  FM_AllMatches.clear()
+  FM_AllMatchesSentences2Index.clear()
+  FM_AllRows.clear()
+
 def AddNewMatchForFindMatches(sHTML, sXML):
   def Add(SentHTMLPieces, sSentXML):
     sent = re.sub(r'<[^>]*>', '', sSentXML)

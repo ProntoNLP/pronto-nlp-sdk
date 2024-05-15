@@ -15,9 +15,9 @@ from queue import Queue
 import heapq
 
 #from ProcessingAPI_Misc import CreateJSContext
-from .FindMatches_Misc_JS import AddNewMatchForFindMatches, GetAllDocIDsForFindMatches, GenerateCSVForMatches_ProcessingAPI
+from .FindMatches_Misc_JS import AddNewMatchForFindMatches, GetAllDocIDsForFindMatches, GenerateCSVForMatches_ProcessingAPI, InitFindMatches
 from .SelectRelation_ExtraMetadata_JS import GetFirstBatchOfDocIDsToDownloadExtraMetadataForDocIDSet, AddNewExtraMetadata, GetNextBatchOfDocIDsToDownloadExtraMetadata
-from .SignalGeneration_Misc_JS import AddNewFullSignalData, GetAllDocIDsForSignals, GenerateSignalCSV_ProcessingAPI
+from .SignalGeneration_Misc_JS import AddNewFullSignalData, GetAllDocIDsForSignals, GenerateSignalCSV_ProcessingAPI, InitFullSignalData
 
 
 if os.environ.get("AWS_FIEF_STAGE", "prod") == "prod":
@@ -232,6 +232,8 @@ def ReadMessageFromWebsocket(ws):
 def GenerateSignalCSV(authToken, sRuleset, sDB, sStartDate=None, sEndDate=None, sTickerFilter=None, tags=None, progressReportCallback=None, fDownloadExtraMetadata=True):
   if progressReportCallback: progressReportCallback("Starting...")
 
+  InitFullSignalData()
+
   if isinstance(sRuleset, str):
     rulesets = re.split(r'[;|]', sRuleset)
   else:
@@ -281,6 +283,8 @@ def DownloadExtraMetadata(authToken, ws, DBsList, allDocIDs, progressReportCallb
 
 def GenerateFindMatchesCSV(authToken, sRuleset, DBsList, sRule, sStartDate=None, sEndDate=None, sTickerFilter=None, tags=None, progressReportCallback=None, fDownloadExtraMetadata=True):
   #JScontext = CreateJSContext()
+
+  InitFindMatches()
 
   if isinstance(DBsList, str): DBsList = DBsList.split(';')
 
