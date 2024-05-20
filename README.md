@@ -102,7 +102,7 @@ You can also use Pronto NLP SDK from the command line:
 ```bash
 pronto_nlp fief generate_signal_csv -u "org:user@example.com" -p "password" -r "Alpha" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-12-31" -g "#DocType_EarningsCalls #SpeakerType_Executives_CEO #Sector_Energy" output_signal.csv
 
-pronto_nlp fief generate_find_matches_csv -u "org:user@example.com" -p "password" -r "Alpha" -v ".*" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-04-31"-g "#Sector_ConsumerStaples #SpeakerType_Executives" -m output_matches.csv
+pronto_nlp fief generate_find_matches_csv -u "org:user@example.com" -p "password" -r "Alpha" -v ".*" -d "SnP_Transcripts_ParseCache.db3" -s "2021-01-01" -e "2021-04-31" -g "#Sector_ConsumerStaples #SpeakerType_Executives" -m output_matches.csv
 
 pronto_nlp fief list_parse_cache_dbs -u "org:user@example.com" -p "password"
 
