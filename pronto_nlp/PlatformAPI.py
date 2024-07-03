@@ -1,5 +1,4 @@
-import json
-import time
+import sys
 import urllib.request
 import requests
 import re
@@ -42,23 +41,27 @@ def GetListRulesets(authToken):
 
 
 def PerformRequest(headers, url, request_obj=None, method='POST', check_response=True, encode_url=False):
+    if encode_url and request_obj:
+        encoded_params = urlencode(request_obj)
+        url = f"{url}?{encoded_params}"
+
     if method.upper() == 'POST':
         body = json.dumps(request_obj)
         response = requests.post(url, headers=headers, data=body)
     elif method.upper() == 'GET':
-        if encode_url and request_obj:
-            encoded_params = urlencode(request_obj)
-            url = f"{url}?{encoded_params}"
+        if request_obj is None:
             response = requests.get(url, headers=headers)
         else:
             response = requests.get(url, headers=headers, params=request_obj)
+    elif method.upper() == 'DELETE':
+        body = json.dumps(request_obj)
+        response = requests.delete(url, headers=headers, data=body)
     else:
         raise ValueError("Invalid method. Supported methods are 'POST' and 'GET'")
 
     if check_response:
         if response.status_code != 200:
             print(f"Request Failed. Status code: {response.status_code}, Response: {response.text}")
-
     try:
         return response.json()
     except json.JSONDecodeError:
@@ -170,9 +173,18 @@ class ProntoPlatformAPI:
         if self.authToken is None:
             self._refresh_authToken()
         requestResult = PerformRequest(self.base_headers, self.URL_Platform_Doc_Upload, method='GET')
-        self.doc_list = requestResult['Items']
+        docs_sorted = sorted(requestResult['Items'], key=lambda x: x['lastRun'], reverse=True)
+        self.doc_list = docs_sorted
         print(f"Found {len(self.doc_list)} documents")
         return self.doc_list
+
+    def delete_doc(self, docmeta):
+        if self.authToken is None:
+            self._refresh_authToken()
+        _req = {'runId': docmeta['runId'], 'fileKey': docmeta['fileKey']}
+        res = PerformRequest(self.base_headers, self.URL_Platform_Doc_Upload, _req, method='DELETE', encode_url=True)
+        if not res:
+            print(f"Succeeded to delete document: {docmeta['fileKey']}")
 
     def get_doc_analytics(self, docmeta, out_path: str = None):
         if self.authToken is None:
@@ -181,14 +193,12 @@ class ProntoPlatformAPI:
             print(f'Document: {docmeta["name"]} - is still being analyzed. Results may be partial.')
 
         _req = {'ExclusiveStartKey': {}, 'runId': docmeta['runId'], 'fileKey': docmeta['fileKey']}
-        requestResult = PerformRequest(self.base_headers, self.URL_Platform_Doc_Results, _req, method='GET',
-                                       encode_url=True)
+        requestResult = PerformRequest(self.base_headers, self.URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
         doc_analytics = requestResult['data']
         if requestResult['ExclusiveStartKey']:
             while requestResult['ExclusiveStartKey']:
                 _req['ExclusiveStartKey'] = requestResult['ExclusiveStartKey']
-                requestResult = PerformRequest(self.base_headers, self.URL_Platform_Doc_Results, _req, method='GET',
-                                               encode_url=True)
+                requestResult = PerformRequest(self.base_headers, self.URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
                 doc_analytics.append(requestResult['data'])
 
         doc_analytics = sorted(doc_analytics, key=lambda x: x['index'])
@@ -198,17 +208,6 @@ class ProntoPlatformAPI:
                 os.path.join(out_path, f"{_strip_file_suffix(docmeta['name'])}_{docmeta['onModel']}.json"), doc_results)
 
         return doc_results
-
-    @staticmethod
-    def _save_to_json(filename, data):
-        if not filename.endswith('.json'):
-            filename += '.json'
-        try:
-            with open(filename, 'w') as f:
-                json.dump(data, f, indent=4)
-            print(f"Saved result to {filename}")
-        except IOError as e:
-            print(f"An error occurred while writing to the file: {e}")
 
     def _validate_doc_model(self, doc_model):
         """
@@ -233,6 +232,78 @@ class ProntoPlatformAPI:
 
         return True
 
+    @staticmethod
+    def count_event_sentiments(data):
+        dlscore_counts = {"positive": 0, "negative": 0, "neutral": 0}
+        polarity_counts = {"positive": 0, "negative": 0, "neutral": 0}
+
+        for entry in data:
+            # Count DLScore values
+            if 'Sentences' in entry:
+                for sentence in entry['Sentences']:
+                    if 'DLScore' in sentence:
+                        if sentence['DLScore'] > 0:
+                            dlscore_counts['Positive'] += 1
+                        elif sentence['DLScore'] < 0:
+                            dlscore_counts['Negative'] += 1
+                        else:
+                            dlscore_counts['Neutral'] += 1
+
+            # Count Polarity values
+            if 'Events' in entry:
+                for event in entry['Events']:
+                    if 'Polarity' in event:
+                        polarity_value = event['Polarity']
+                    else:
+                        polarity_value = 'Neutral'
+                    polarity_counts[polarity_value] += 1
+
+        return dlscore_counts, polarity_counts
+
+    @staticmethod
+    def _save_to_json(filename, data):
+        if not filename.endswith('.json'):
+            filename += '.json'
+        try:
+            with open(filename, 'w') as f:
+                json.dump(data, f, indent=4)
+            print(f"Saved result to {filename}")
+        except IOError as e:
+            print(f"An error occurred while writing to the file: {e}")
+
+    @staticmethod
+    async def _save_result_to_json_async(result, out_dir):
+        filename = os.path.join(out_dir, f"{_strip_file_suffix(result['doc_meta']['name'])}_{result['doc_meta']['onModel']}.json")
+        if not filename.endswith('.json'):
+            filename += '.json'
+        try:
+            async with aiofiles.open(filename, 'w') as f:
+                await f.write(json.dumps(result, indent=4))
+            print(f"Saved result to {filename}")
+        except IOError as e:
+            print(f"An error occurred while writing to the file: {e}")
+
+    @staticmethod
+    async def _perform_request_async(session, headers, url, params=None, method='POST', encode_url=False):
+        if method.upper() == 'POST':
+            body = json.dumps(params)
+            async with session.post(url, headers=headers, data=body) as response:
+                response.raise_for_status()
+                return await response.json()
+        elif method.upper() == 'GET':
+            if encode_url and params:
+                encoded_params = urlencode(params)
+                url = f"{url}?{encoded_params}"
+                async with session.get(url, headers=headers) as response:
+                    response.raise_for_status()
+                    return await response.json()
+            else:
+                async with session.get(url, headers=headers, params=params) as response:
+                    response.raise_for_status()
+                    return await response.json()
+        else:
+            raise ValueError("Invalid method. Supported methods are 'POST' and 'GET'")
+
     async def _get_platform_upload_link(self, doc_model):
         """
         Asynchronously retrieve the upload link for a document from the platform.
@@ -249,10 +320,6 @@ class ProntoPlatformAPI:
                         f"Failed to retrieve upload link. Status code: {response.status}, Response: {await response.text()}")
 
     async def _upload_doc_to_platform(self, doc_model):
-        if not self._validate_doc_model(doc_model):
-            print(f"Invalid document-model request: {doc_model} --> requests must include 'name' and 'onModel'\n  --> Your Models Are: {self.allowed_models}")
-            return
-
         requestResult = await self._get_platform_upload_link(doc_model)  # Make sure this is async
         signed_url = requestResult['signedUrl']
         file_path = doc_model['name']
@@ -301,7 +368,7 @@ class ProntoPlatformAPI:
                     async with session.post(self.URL_Platform_Doc_Analyze, json=doc_req, headers=headers) as response:
                         response_data = await response.json()
                         if response.status == 200:
-                            print(f"Starting to analyze document '{requestResult['name']}'")
+                            print(f"Starting to analyze document '{requestResult['name']}' with {requestResult['onModel']}")
                             return response_data  # assuming you might want to do something with the response
                         else:
                             print(f"Analysis request failed, retrying in 5 seconds...")
@@ -313,26 +380,6 @@ class ProntoPlatformAPI:
                     await asyncio.sleep(5)
 
             raise Exception(f"Failed to analyze file after several attempts")
-
-    async def _perform_request_async(self, session, headers, url, params=None, method='POST', encode_url=False):
-        if method.upper() == 'POST':
-            body = json.dumps(params)
-            async with session.post(url, headers=headers, data=body) as response:
-                response.raise_for_status()
-                return await response.json()
-        elif method.upper() == 'GET':
-            if encode_url and params:
-                encoded_params = urlencode(params)
-                url = f"{url}?{encoded_params}"
-                async with session.get(url, headers=headers) as response:
-                    response.raise_for_status()
-                    return await response.json()
-            else:
-                async with session.get(url, headers=headers, params=params) as response:
-                    response.raise_for_status()
-                    return await response.json()
-        else:
-            raise ValueError("Invalid method. Supported methods are 'POST' and 'GET'")
 
     async def _get_doc_analytics_async(self, docmeta):
         if self.authToken is None:
@@ -355,23 +402,23 @@ class ProntoPlatformAPI:
         doc_results = {"doc_meta": docmeta, "doc_analytics": doc_analytics}
         return doc_results
 
-    async def _save_result_to_json_async(self, result, out_dir):
-        filename = os.path.join(out_dir, f"{_strip_file_suffix(result['doc_meta']['name'])}_{result['doc_meta']['onModel']}.json")
-        if not filename.endswith('.json'):
-            filename += '.json'
-        try:
-            async with aiofiles.open(filename, 'w') as f:
-                await f.write(json.dumps(result, indent=4))
-            print(f"Saved result to {filename}")
-        except IOError as e:
-            print(f"An error occurred while writing to the file: {e}")
-
     async def analyze_docs(self, doc_models: list, out_dir: str = None):
         if out_dir and not os.path.exists(out_dir):
             os.makedirs(out_dir)
 
-        print(f"Uploading {len(doc_models)} documents")
-        upload_tasks = [self._upload_doc_to_platform(d_m) for d_m in doc_models]
+        doc_model_reqs = []
+        for d_m in doc_models:
+            if not self._validate_doc_model(d_m):
+                print(f"Invalid document-model request: {d_m} --> requests must include 'name' and 'onModel'\n  --> Your Models Are: {self.allowed_models}")
+            else:
+                doc_model_reqs.append(d_m)
+
+        if not doc_model_reqs:
+            print(f"No valid document-model requests found")
+            sys.exit()
+
+        print(f"Uploading {len(doc_model_reqs)} documents")
+        upload_tasks = [self._upload_doc_to_platform(d_m) for d_m in doc_model_reqs]
         await asyncio.gather(*upload_tasks)  # Upload documents concurrently
         print("All documents uploaded successfully.")
 
@@ -391,9 +438,10 @@ class ProntoPlatformAPI:
             try:
                 # format results
                 docmeta = _safe_get(self.request_meta_map, f"{result['doc_meta']['runId']}{result['doc_meta']['fileKey']}", default=dict())
-                # TODO calculate 'sentiment' and 'DLSentiment'
                 result['doc_meta'] = {**docmeta, **result['doc_meta']}
-
+                dlscore_counts, polarity_counts = self.count_event_sentiments(result['doc_analytics'])
+                result['doc_meta']['sentiment'] = polarity_counts
+                result['doc_meta']['DLSentiment'] = dlscore_counts
                 if out_dir:
                     # Save results asynchronously to the specified output directory
                     await self._save_result_to_json_async(result, out_dir)

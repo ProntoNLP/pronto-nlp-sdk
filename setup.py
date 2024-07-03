@@ -11,6 +11,8 @@ setup(
         'requests',
         'websockets',
         'asyncio',
+        'aiohttp',
+        'aiofiles',
     ],
     entry_points={
         'console_scripts': [
