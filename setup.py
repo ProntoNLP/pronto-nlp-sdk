@@ -2,12 +2,15 @@ from setuptools import setup, find_packages
 
 setup(
     name='pronto_nlp',
-    version='0.2.0',
+    version='0.3.0',
     packages=find_packages(),
     install_requires=[
         'boto3',
         'gevent',
         'websocket-client',
+        'requests',
+        'websockets',
+        'asyncio',
     ],
     entry_points={
         'console_scripts': [
