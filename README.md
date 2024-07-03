@@ -1,10 +1,10 @@
-# Pronto NLP SDK
+# ProntoNLP SDK
 
-Pronto NLP SDK is a Python library for performing tasks using the Pronto NLP infrastructure.
+ProntoNLP SDK is a Python library for performing tasks using the ProntoNLP infrastructure.
 
 ## Installation
 
-Install Pronto NLP SDK directly from GitHub using pip:
+Install ProntoNLP SDK directly from GitHub using pip:
 
 ```bash
 pip install git+https://github.com/ProntoNLP/pronto-nlp-sdk.git
@@ -15,6 +15,7 @@ pip install git+https://github.com/ProntoNLP/pronto-nlp-sdk.git
 ### User Authentication
 Users must authenticate each request with their org:username and password.
 Your org name appears in the URL used for accessing the ProntoNLP platform.
+
 For example, if your URL to access the ProntoNLP platform is:
 'prontofund.prontonlp.com'
 
@@ -22,11 +23,94 @@ Then your username for all API requests should be:
 
 `prontofund:user@example.com`
 
-### From Code
+### PlatformAPI Module
 
-You can use Pronto NLP SDK in your Python code as follows:
+The ProntoNLP Platform API SDK allows users to interact with the ProntoNLP platform for document analysis. 
+This SDK provides methods for uploading and analyzing documents using ProntoNLPs state-of-the-art NLP Platform.
 
-**FIEF Module**
+All documents uploaded via the PlatformAPI are also readily accessible on the ProntoNLP Platform for viewing and analytics.
+Simply log in to the platform and navigate to the 'Documents' tab on the left ribbon to view.
+
+To begin using the SDK, initialize the ProntoPlatformAPI class with your user credentials.
+```python
+from pronto_nlp import PlatformAPI as pAPI
+
+# Initialize the Pronto Platform API
+pronto = pAPI.ProntoPlatformAPI(user, password)
+```
+
+**Retrieve Document List**
+
+You can retrieve the list of your previously analyzed documents available on the platform using the get_doc_list method.
+```python
+# Get the list of documents
+docs = pronto.get_doc_list()
+print("Documents:", docs)
+```
+
+**Retrieve Document Analytics**
+
+To get the analytics for a specific document which was already analzyed, use the get_doc_analytics method. 
+This method takes a document object from the list retrieved by get_doc_list.
+```python
+# Get the analytics for the first document in the list
+doc_analytics = pronto.get_doc_analytics(docs[0])
+print("Document Analytics:", doc_analytics)
+```
+
+**Delete a Document**
+
+If you need to delete a document from the platform, use the delete_doc method. This method also takes a document object from the list retrieved by get_doc_list.
+```python
+# Delete the first document in the list
+pronto.delete_doc(docs[0])
+print("Document deleted successfully")
+```
+
+### Asynchronous Document Processing
+
+The SDK supports asynchronous document processing for uploading, analyzing, and saving results. 
+The main entry is via 'analyze_docs' which expects to receive a list or generator of document_requests.
+
+Each document_request must contain:
+- 'name': filepath to document
+- 'onModel': name of model to use
+
+If you provide an out_dir, results will be written out to JSON files in that directory.
+If no out_dir is given, results will be returned for the user to further process.
+All results will be written or returned as they become available.
+
+Currently, the SDK supports '.txt' inputs only.
+
+The models can be any of your FIEF models (see below) or one of ProntoNLP's LLMs.
+
+LLM Models currently available are: 'LLMAlpha' and 'LLMMacro'.
+
+Here is an example of how to process documents asynchronously
+```python
+from pronto_nlp import PlatformAPI as pAPI
+import asyncio
+
+async def process_documents():
+    # Initialize the Pronto Platform API
+    pronto = pAPI.ProntoPlatformAPI(user, password)
+
+    # Define the document models to be processed
+    doc_models = [{"name": "brokerReport.txt", "onModel": "LLMAlpha"}, {"name": "earningReport.txt", "onModel": "LLMAlpha"}, {"name": "earningReport.txt", "onModel": "Alpha"}]
+
+    # Analyze documents and optionally save the results to a specified directory
+    async for result in pronto.analyze_docs(doc_models, out_dir='./pronto_results'):
+        print("Saved result:", result)
+
+    # Alternatively, analyze documents without saving results to a directory
+    # async for result in pronto.analyze_docs(doc_models):
+    #     print("Received result:", result['doc_meta'])
+
+if __name__ == "__main__":
+    asyncio.run(process_documents())
+```
+
+### FIEF Module
 ```python
 from pronto_nlp import fief
 
