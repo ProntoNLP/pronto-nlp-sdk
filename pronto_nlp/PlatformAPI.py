@@ -184,7 +184,7 @@ class ProntoPlatformAPI:
         _req = {'runId': docmeta['runId'], 'fileKey': docmeta['fileKey']}
         res = PerformRequest(self.base_headers, self.URL_Platform_Doc_Upload, _req, method='DELETE', encode_url=True)
         if not res:
-            print(f"Succeeded to delete document: {docmeta['fileKey']}")
+            print(f"Succeeded to delete document: {docmeta['name']} - fileKey: {docmeta['fileKey']}")
 
     def get_doc_analytics(self, docmeta, out_path: str = None):
         if self.authToken is None:
@@ -243,19 +243,19 @@ class ProntoPlatformAPI:
                 for sentence in entry['Sentences']:
                     if 'DLScore' in sentence:
                         if sentence['DLScore'] > 0:
-                            dlscore_counts['Positive'] += 1
+                            dlscore_counts['positive'] += 1
                         elif sentence['DLScore'] < 0:
-                            dlscore_counts['Negative'] += 1
+                            dlscore_counts['negative'] += 1
                         else:
-                            dlscore_counts['Neutral'] += 1
+                            dlscore_counts['neutral'] += 1
 
             # Count Polarity values
             if 'Events' in entry:
                 for event in entry['Events']:
                     if 'Polarity' in event:
-                        polarity_value = event['Polarity']
+                        polarity_value = event['Polarity'].lower()
                     else:
-                        polarity_value = 'Neutral'
+                        polarity_value = 'neutral'
                     polarity_counts[polarity_value] += 1
 
         return dlscore_counts, polarity_counts
@@ -310,17 +310,19 @@ class ProntoPlatformAPI:
         """
         url = self.URL_Platform_Doc_Upload
         headers = self.base_headers
+        _req = doc_model.copy()
+        _req['name'] = os.path.basename(doc_model['name'])
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=doc_model, headers=headers) as response:
+            async with session.post(url, json=_req, headers=headers) as response:
                 if response.status == 200:
                     result = await response.json()
-                    return result[0]  # Assuming the result is formatted this way
+                    return result[0]
                 else:
                     raise Exception(
                         f"Failed to retrieve upload link. Status code: {response.status}, Response: {await response.text()}")
 
     async def _upload_doc_to_platform(self, doc_model):
-        requestResult = await self._get_platform_upload_link(doc_model)  # Make sure this is async
+        requestResult = await self._get_platform_upload_link(doc_model)
         signed_url = requestResult['signedUrl']
         file_path = doc_model['name']
 
@@ -369,7 +371,7 @@ class ProntoPlatformAPI:
                         response_data = await response.json()
                         if response.status == 200:
                             print(f"Starting to analyze document '{requestResult['name']}' with {requestResult['onModel']}")
-                            return response_data  # assuming you might want to do something with the response
+                            return response_data
                         else:
                             print(f"Analysis request failed, retrying in 5 seconds...")
                             cntr += 1
@@ -445,7 +447,7 @@ class ProntoPlatformAPI:
                 if out_dir:
                     # Save results asynchronously to the specified output directory
                     await self._save_result_to_json_async(result, out_dir)
-                    yield result['doc_meta']['fileKey']
+                    yield result['doc_meta']
                 else:
                     # Yield the result if no output directory is provided
                     yield result
