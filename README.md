@@ -23,6 +23,8 @@ Then your username for all API requests should be:
 
 `prontofund:user@example.com`
 
+#
+
 ### PlatformAPI Module
 
 The ProntoNLP Platform API SDK allows users to interact with the ProntoNLP platform for document analysis. 
@@ -78,6 +80,8 @@ Each document_request must contain:
 
 If you provide an out_dir, results will be written out to JSON files in that directory.
 If no out_dir is given, results will be returned for the user to further process.
+The analyzer functions also accept a 'keep_results' parameter (default: True), which will store the document analytics on the ProntoNLP Platform in User Documents.
+(Reminder: all documents uploaded are completely secure and private to the user)
 All results will be written or returned as they become available.
 
 Currently, the SDK supports '.txt' inputs only.
@@ -132,7 +136,7 @@ if __name__ == "__main__":
     asyncio.run(process_texts())
 ```
 
-
+#
 
 ### FIEF Module
 ```python
