@@ -1,11 +1,13 @@
 import sys
 import urllib.request
+from typing import Union, List, Dict, AsyncGenerator
 import requests
 import re
 from urllib.parse import urlencode, quote
 import asyncio
 import websockets
 import json
+from aiofiles import tempfile
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 import os
 import aiohttp
@@ -160,14 +162,14 @@ class ProntoPlatformAPI:
         self.doc_list = list()
         self.request_meta_map = dict()
         self._refresh_authToken()
-        self.allowed_models = ['LLMAlpha', 'LLMMacro'] + GetListRulesets(self.authToken)
+        self.allowed_models = ['LLMAlpha'] + GetListRulesets(self.authToken)  # 'LLMMacro'
 
     def _refresh_authToken(self):
         self.authToken = SignIn(self.user, self.password)
         self.base_headers = {"Content-Type": "application/json", "Authorization": self.authToken,
                              "pronto-granted": "R$w#8k@Pmz%2x2Dg#5fGz"}
 
-    def get_doc_list(self, refresh: bool = False):
+    def get_doc_list(self, refresh: bool = True):
         if self.doc_list and not refresh:
             return self.doc_list
         if self.authToken is None:
@@ -220,17 +222,20 @@ class ProntoPlatformAPI:
         bool: True if the object is valid, False otherwise.
         """
         if not isinstance(doc_model, dict):
-            return False
+            return False, "doc-model request is not a valid dict"
 
         required_keys = ['name', 'onModel']
         for key in required_keys:
             if key not in doc_model or not isinstance(doc_model[key], str):
-                return False
+                return False, f"doc-model request is missing required key: {key}"
 
         if doc_model['onModel'] not in self.allowed_models:
-            return False
+            return False, f"doc-model request is using an invalid model: {doc_model['onModel']} -- Allowed Models: {self.allowed_models}"
 
-        return True
+        if not doc_model['name'].endswith('.txt'):
+            return False, f"doc-model request is using an invalid doc type: {doc_model['name']} -- Doc type must be .txt"
+
+        return True, ''
 
     @staticmethod
     def count_event_sentiments(data):
@@ -404,14 +409,15 @@ class ProntoPlatformAPI:
         doc_results = {"doc_meta": docmeta, "doc_analytics": doc_analytics}
         return doc_results
 
-    async def analyze_docs(self, doc_models: list, out_dir: str = None):
+    async def analyze_docs(self, doc_models: List[dict], out_dir: str = None) -> AsyncGenerator[Dict, None]:
         if out_dir and not os.path.exists(out_dir):
             os.makedirs(out_dir)
 
         doc_model_reqs = []
         for d_m in doc_models:
-            if not self._validate_doc_model(d_m):
-                print(f"Invalid document-model request: {d_m} --> requests must include 'name' and 'onModel'\n  --> Your Models Are: {self.allowed_models}")
+            chk, reason = self._validate_doc_model(d_m)
+            if not chk:
+                print(f"Invalid document-model request: {d_m} --> {reason}")
             else:
                 doc_model_reqs.append(d_m)
 
@@ -458,3 +464,29 @@ class ProntoPlatformAPI:
         print("Analyzer completed")
         self.request_meta_map = dict()  # Clear the map after processing is complete
 
+    async def analyze_text(self, text: Union[str, List[str]], model: str, out_dir: str = None) -> AsyncGenerator[Dict, None]:
+        if isinstance(text, str):
+            text = [text]
+
+        temp_files = []
+        try:
+            for item in text:
+                if not item:
+                    continue
+                # Create a filename from the first few words of the text
+                filename = '_'.join(item.split()[:5])  # Take first 5 words
+                filename = ''.join(c for c in filename if c.isalnum() or c in ['_', '-'])  # Remove special characters
+                filename = f"{filename[:50]}__"  # Limit to 50 characters
+
+                async with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', prefix=filename, delete=False) as temp_file:
+                    await temp_file.write(item)
+                    temp_files.append(temp_file.name)
+
+            doc_models = [{'name': file_path, 'onModel': model} for file_path in temp_files]
+
+            async for result in self.analyze_docs(doc_models, out_dir):
+                yield result
+
+        finally:
+            for file_path in temp_files:
+                os.unlink(file_path)

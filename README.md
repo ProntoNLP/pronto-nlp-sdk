@@ -84,7 +84,7 @@ Currently, the SDK supports '.txt' inputs only.
 
 The models can be any of your FIEF models (see below) or one of ProntoNLP's LLMs.
 
-LLM Models currently available are: 'LLMAlpha' and 'LLMMacro'.
+LLM Models currently available are: 'LLMAlpha'.
 
 Here is an example of how to process documents asynchronously
 ```python
@@ -96,7 +96,9 @@ async def process_documents():
     pronto = pAPI.ProntoPlatformAPI(user, password)
 
     # Define the document models to be processed
-    doc_models = [{"name": "brokerReport.txt", "onModel": "LLMAlpha"}, {"name": "earningReport.txt", "onModel": "LLMAlpha"}, {"name": "earningReport.txt", "onModel": "Alpha"}]
+    doc_models = [{"name": "brokerReport.txt", "onModel": "LLMAlpha"}, 
+                  {"name": "earningReport.txt", "onModel": "LLMAlpha"}, 
+                  {"name": "earningReport.txt", "onModel": "Alpha"}]
 
     # Analyze documents and optionally save the results to a specified directory
     async for result in pronto.analyze_docs(doc_models, out_dir='./pronto_results'):
@@ -109,6 +111,28 @@ async def process_documents():
 if __name__ == "__main__":
     asyncio.run(process_documents())
 ```
+
+Users can also process text strings directly
+```python
+from pronto_nlp import PlatformAPI as pAPI
+import asyncio
+
+async def process_texts():
+    pronto = pAPI.ProntoPlatformAPI(user, password)
+
+    async for result in pronto.analyze_text([
+        "Fourth quarter Data Center growth was driven by both training and inference of generative AI and large language models across a broad set of industries, use cases and regions.",
+        "During fiscal year '24, we utilized cash of $9.9 billion towards shareholder returns, including $9.5 billion in share repurchases."
+        ],
+        model='LLMAlpha',
+        out_dir='./pronto_results'):
+        print("Saved result:", result)
+
+if __name__ == "__main__":
+    asyncio.run(process_texts())
+```
+
+
 
 ### FIEF Module
 ```python
