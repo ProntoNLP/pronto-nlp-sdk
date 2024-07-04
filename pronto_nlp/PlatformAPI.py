@@ -169,7 +169,7 @@ class ProntoPlatformAPI:
         self.base_headers = {"Content-Type": "application/json", "Authorization": self.authToken,
                              "pronto-granted": "R$w#8k@Pmz%2x2Dg#5fGz"}
 
-    def get_doc_list(self, refresh: bool = True):
+    def get_doc_list(self, refresh: bool = True) -> List:
         if self.doc_list and not refresh:
             return self.doc_list
         if self.authToken is None:
@@ -188,7 +188,7 @@ class ProntoPlatformAPI:
         if not res:
             print(f"Succeeded to delete document: {docmeta['name']} - fileKey: {docmeta['fileKey']}")
 
-    def get_doc_analytics(self, docmeta, out_path: str = None):
+    def get_doc_analytics(self, docmeta, out_path: str = None) -> Dict:
         if self.authToken is None:
             self._refresh_authToken()
         if docmeta['status'] != 'Completed':
@@ -409,7 +409,7 @@ class ProntoPlatformAPI:
         doc_results = {"doc_meta": docmeta, "doc_analytics": doc_analytics}
         return doc_results
 
-    async def analyze_docs(self, doc_models: List[dict], out_dir: str = None) -> AsyncGenerator[Dict, None]:
+    async def analyze_docs(self, doc_models: List[dict], out_dir: str = None, keep_results: bool = True) -> AsyncGenerator[Dict, None]:
         if out_dir and not os.path.exists(out_dir):
             os.makedirs(out_dir)
 
@@ -462,9 +462,13 @@ class ProntoPlatformAPI:
                 continue
 
         print("Analyzer completed")
+        if not keep_results:
+            # delete documents
+            for k, doc_meta in self.request_meta_map.items():
+                self.delete_doc(doc_meta)
         self.request_meta_map = dict()  # Clear the map after processing is complete
 
-    async def analyze_text(self, text: Union[str, List[str]], model: str, out_dir: str = None) -> AsyncGenerator[Dict, None]:
+    async def analyze_text(self, text: Union[str, List[str]], model: str, out_dir: str = None, keep_results: bool = True) -> AsyncGenerator[Dict, None]:
         if isinstance(text, str):
             text = [text]
 
@@ -484,7 +488,7 @@ class ProntoPlatformAPI:
 
             doc_models = [{'name': file_path, 'onModel': model} for file_path in temp_files]
 
-            async for result in self.analyze_docs(doc_models, out_dir):
+            async for result in self.analyze_docs(doc_models, out_dir, keep_results):
                 yield result
 
         finally:
