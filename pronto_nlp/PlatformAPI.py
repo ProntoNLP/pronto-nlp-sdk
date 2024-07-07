@@ -317,6 +317,10 @@ class ProntoPlatformAPI:
         headers = self.base_headers
         _req = doc_model.copy()
         _req['name'] = os.path.basename(doc_model['name'])
+        _req['isLLM'] = False
+        if _req['onModel'].lower() == 'llmalpha':
+            _req['onModel'] = 'Alpha'
+            _req['isLLM'] = True
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=_req, headers=headers) as response:
                 if response.status == 200:
@@ -364,9 +368,6 @@ class ProntoPlatformAPI:
         """
         headers = {"Authorization": self.authToken, "pronto-granted": "R$w#8k@Pmz%2x2Dg#5fGz"}
         doc_req = {"document": requestResult, "onModel": requestResult['onModel'], "streaming": False}
-        if requestResult['onModel'].lower() == 'llmalpha':
-            doc_req['onModel'] = 'equity'
-            doc_req['isLLM'] = True
         cntr = 0
 
         async with aiohttp.ClientSession() as session:
@@ -375,7 +376,7 @@ class ProntoPlatformAPI:
                     async with session.post(self.URL_Platform_Doc_Analyze, json=doc_req, headers=headers) as response:
                         response_data = await response.json()
                         if response.status == 200:
-                            print(f"Starting to analyze document '{requestResult['name']}' with {requestResult['onModel']}")
+                            print(f"Starting to analyze document '{requestResult['name']}'")
                             return response_data
                         else:
                             print(f"Analysis request failed, retrying in 5 seconds...")
