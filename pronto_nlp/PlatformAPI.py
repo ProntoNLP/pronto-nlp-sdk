@@ -238,32 +238,48 @@ class ProntoPlatformAPI:
         return True, ''
 
     @staticmethod
-    def count_event_sentiments(data):
+    def count_event_sentiments(data, isLLM):
+        def extract_importance(slotrec):
+            for item in slotrec:
+                if item.get('SlotName') == 'importance':
+                    return item.get('Value').lower()
+            return None
+
         dlscore_counts = {"positive": 0, "negative": 0, "neutral": 0}
-        polarity_counts = {"positive": 0, "negative": 0, "neutral": 0}
+        event_sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
+        importance_sentiment_counts = {'negative': {'high': 0, 'low': 0, 'medium': 0},
+                                       'neutral': {'high': 0, 'low': 0, 'medium': 0},
+                                       'positive': {'high': 0, 'low': 0, 'medium': 0}}
 
         for entry in data:
             # Count DLScore values
-            if 'Sentences' in entry:
-                for sentence in entry['Sentences']:
-                    if 'DLScore' in sentence:
-                        if sentence['DLScore'] > 0:
-                            dlscore_counts['positive'] += 1
-                        elif sentence['DLScore'] < 0:
-                            dlscore_counts['negative'] += 1
-                        else:
-                            dlscore_counts['neutral'] += 1
+            if not isLLM:
+                if 'Sentences' in entry:
+                    for sentence in entry['Sentences']:
+                        if 'DLScore' in sentence:
+                            if sentence['DLScore'] > 0:
+                                dlscore_counts['positive'] += 1
+                            elif sentence['DLScore'] < 0:
+                                dlscore_counts['negative'] += 1
+                            else:
+                                dlscore_counts['neutral'] += 1
 
-            # Count Polarity values
+            # Count Event Sentiment values
             if 'Events' in entry:
                 for event in entry['Events']:
                     if 'Polarity' in event:
-                        polarity_value = event['Polarity'].lower()
+                        sentiment_value = event['Polarity'].lower()
                     else:
-                        polarity_value = 'neutral'
-                    polarity_counts[polarity_value] += 1
+                        sentiment_value = 'neutral'
+                    event_sentiment_counts[sentiment_value] += 1
 
-        return dlscore_counts, polarity_counts
+                    # get importance if exists
+                    if isLLM:
+                        importance = extract_importance(event['Slots'])
+                        if importance is not None:
+                            importance_sentiment_counts[sentiment_value][importance] += 1
+
+        return dlscore_counts, event_sentiment_counts, importance_sentiment_counts
 
     @staticmethod
     def _save_to_json(filename, data):
@@ -355,8 +371,7 @@ class ProntoPlatformAPI:
                     if response.status == 204:
                         print(f"File '{file_path}' uploaded successfully")
                         self.request_meta_map[
-                            f"{requestResult['document']['runId']}{requestResult['document']['fileKey']}"] = \
-                        requestResult['document']
+                            f"{requestResult['document']['runId']}{requestResult['document']['fileKey']}"] = requestResult['document']
                     else:
                         response_text = await response.text()
                         raise Exception(
@@ -448,9 +463,14 @@ class ProntoPlatformAPI:
                 # format results
                 docmeta = _safe_get(self.request_meta_map, f"{result['doc_meta']['runId']}{result['doc_meta']['fileKey']}", default=dict())
                 result['doc_meta'] = {**docmeta, **result['doc_meta']}
-                dlscore_counts, polarity_counts = self.count_event_sentiments(result['doc_analytics'])
-                result['doc_meta']['sentiment'] = polarity_counts
+                if result['doc_meta']['isLLM']:
+                    result['doc_meta']['onModel'] = f"LLM{result['doc_meta']['onModel']}"
+
+                dlscore_counts, event_sentiment_counts, importance_sentiment_counts = self.count_event_sentiments(result['doc_analytics'], isLLM=result['doc_meta']['isLLM'])
+                result['doc_meta']['sentiment'] = event_sentiment_counts
                 result['doc_meta']['DLSentiment'] = dlscore_counts
+                result['doc_meta']['importanceSentiment'] = importance_sentiment_counts
+
                 if out_dir:
                     # Save results asynchronously to the specified output directory
                     await self._save_result_to_json_async(result, out_dir)
