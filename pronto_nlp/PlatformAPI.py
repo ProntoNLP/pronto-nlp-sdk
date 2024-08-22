@@ -36,12 +36,6 @@ def SignIn(user, password):
             return result
 
 
-def GetListRulesets(authToken):
-  requestObj = {"request": "GetRulesetsList",}
-  requestResult = PerformRequest({"Authorization": authToken}, "https://prontonlp.net/fiefserver/main/guihelper", requestObj)
-  return requestResult['rulesets']
-
-
 def PerformRequest(headers, url, request_obj=None, method='POST', check_response=True, encode_url=False):
     if encode_url and request_obj:
         encoded_params = urlencode(request_obj)
@@ -79,6 +73,24 @@ def _safe_get(d, key, default=None):
         return d[key]
     except KeyError:
         return default
+
+
+def _get_dict_record(records, key, value):
+    """
+    Finds the first dictionary in a list of dictionaries where the specified key has the given value.
+
+    Parameters:
+    records (list): A list of dictionaries to search through.
+    key (str): The key to search for.
+    value: The value to match with the key.
+
+    Returns:
+    dict or None: The first dictionary that matches the key-value pair, or None if no match is found.
+    """
+    for record in records:
+        if key in record and record[key] == value:
+            return record
+    return None
 
 
 class ProntoWebSocketClient:
@@ -152,55 +164,168 @@ async def analyze_docs_websocket(base_uri, authToken, result_callback, expected_
 
 class ProntoPlatformAPI:
     def __init__(self, user, password):
-        self.URL_Platform_Doc_Upload = "https://server-prod.prontonlp.com/reflect/documents"
-        self.URL_Platform_Doc_Analyze = "https://server-prod.prontonlp.com/reflect/analyze-document"
-        self.URL_Platform_Doc_Results = "https://server-prod.prontonlp.com/reflect/results"
-        self.URL_Doc_Results_WebSocket = "wss://socket-prod.prontonlp.com/"
+        self._request_meta_map = dict()
+        self._URL_Platform_Doc_Upload = "https://server-prod.prontonlp.com/reflect/documents"
+        self._URL_Platform_Doc_Analyze = "https://server-prod.prontonlp.com/reflect/analyze-document"
+        self._URL_Platform_Doc_Results = "https://server-prod.prontonlp.com/reflect/results"
+        self._URL_Doc_Results_WebSocket = "wss://socket-prod.prontonlp.com/"
+
+        # self._URL_Platform_Vector_Search = "https://server-prod.prontonlp.com/get-vector-search-results"
+
+        # self.URL_Get_Fief_Models = "https://server-prod.prontonlp.com/get-user-models"
+        self._URL_Get_Models_Events = "https://server-prod.prontonlp.com/models/events"
+
+        self._URL_Get_Fief_Event_Rules = "https://server-prod.prontonlp.com/event-rules"
+        self._URL_Create_Fief_Model = "https://server-prod.prontonlp.com/save-user-model"
+        self._URL_Delete_Fief_Model = "https://server-prod.prontonlp.com/delete-user-model"
+        self._URL_Create_Fief_Event = "https://server-prod.prontonlp.com/save-user-event"
+        self._URL_Delete_Fief_Event = "https://server-prod.prontonlp.com/delete-user-event"
+        self._URL_Create_Fief_Pattern = ""
+        self._URL_Delete_Fief_Pattern = "https://server-prod.prontonlp.com/delete-user-pattern"
+
         self.user, self.password = user, password
-        self.authToken = None
-        self.base_headers = None
+        self._authToken = None
+        self._base_headers = None
         self.doc_list = list()
-        self.request_meta_map = dict()
+        self.models = dict()
         self._refresh_authToken()
-        self.allowed_models = ['LLMAlpha'] + GetListRulesets(self.authToken)  # 'LLMMacro'
+        self.get_model_list()
 
     def _refresh_authToken(self):
-        self.authToken = SignIn(self.user, self.password)
-        self.base_headers = {"Content-Type": "application/json", "Authorization": self.authToken,
+        self._authToken = SignIn(self.user, self.password)
+        self._base_headers = {"Content-Type": "application/json", "Authorization": self._authToken,
                              "pronto-granted": "R$w#8k@Pmz%2x2Dg#5fGz"}
 
     def get_doc_list(self, refresh: bool = True) -> List:
         if self.doc_list and not refresh:
             return self.doc_list
-        if self.authToken is None:
+        if self._authToken is None:
             self._refresh_authToken()
-        requestResult = PerformRequest(self.base_headers, self.URL_Platform_Doc_Upload, method='GET')
+        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Doc_Upload, method='GET')
         docs_sorted = sorted(requestResult['Items'], key=lambda x: x['lastRun'], reverse=True)
         self.doc_list = docs_sorted
         print(f"Found {len(self.doc_list)} documents")
         return self.doc_list
 
+    @staticmethod
+    def _organize_fief_model_response(data_dict):
+        organized_data = {}
+        for modtype, mods in data_dict.items():
+            pref = ""
+            if modtype == 'llm':
+                pref = 'LLM'
+            for modname, modevents in mods.items():
+                organized_data[f"{pref}{os.path.basename(modname)}"] = {'EventTypes': modevents['EventTypes'], 'modelPath': f"{pref}{modname}"}
+        return organized_data
+
+    def get_model_list(self, refresh: bool = True) -> Dict:
+        if self.models and not refresh:
+            return self.models
+        if self._authToken is None:
+            self._refresh_authToken()
+        requestResult = PerformRequest(self._base_headers, self._URL_Get_Models_Events, method='GET')
+        self.models = self._organize_fief_model_response(requestResult)
+        return self.models
+
+    def get_fief_event_rules(self, modelName, eventType) -> List:
+        if self._authToken is None:
+            self._refresh_authToken()
+        self.get_model_list()
+        if modelName in ['LLMAlpha', 'LLMMacro']:
+            print("FIEF event rules can only be retrieved for FIEF models, not LLMs")
+            return []
+        if modelName not in self.models.keys():
+            print(f"Model {modelName} does not exist - cannot get FIEF event in Model that does not exist")
+            return []
+        model_obj = self.models[modelName]
+        if eventType not in model_obj['EventTypes']:
+            print(f"Event {eventType} does not exist")
+            return []
+        requestResult = PerformRequest(self._base_headers, self._URL_Get_Fief_Event_Rules,
+                                       request_obj={'modelName': model_obj['modelPath'], 'eventType': eventType},
+                                       method='POST')
+        return requestResult['data']
+
+    def create_fief_model(self, modelName):
+        if self._authToken is None:
+            self._refresh_authToken()
+        self.get_model_list()
+        if modelName in self.models.keys():
+            print(f"Model {modelName} already exists")
+            return False
+        requestResult = PerformRequest(self._base_headers, self._URL_Create_Fief_Model, request_obj={'modelName': modelName}, method='POST')
+        self.get_model_list()
+        return requestResult['data']
+
+    def delete_fief_model(self, modelName):
+        if self._authToken is None:
+            self._refresh_authToken()
+        self.get_model_list()
+        if modelName not in self.models.keys():
+            print(f"Model {modelName} does not exist")
+            return False
+        requestResult = PerformRequest(self._base_headers, self._URL_Delete_Fief_Model,
+                                       request_obj={'modelName': modelName}, method='POST')
+        self.get_model_list()
+        if 'error' in requestResult:
+            return requestResult['error']
+        else:
+            return requestResult['data']
+
+    def create_fief_event(self, modelName, eventType, categoryName='myEvents'):
+        if self._authToken is None:
+            self._refresh_authToken()
+        self.get_model_list()
+        if modelName not in self.models.keys():
+            print(f"Model {modelName} does not exist - cannot create FIEF event in Model that does not exist")
+            return False
+        requestResult = PerformRequest(self._base_headers, self._URL_Create_Fief_Event,
+                                       request_obj={'id': '', 'modelName': modelName, 'eventType': eventType, 'categoryName': categoryName},
+                                       method='POST')
+        self.get_model_list()
+        return requestResult['data']
+
+    def delete_fief_event(self, modelName, eventType):
+        if self._authToken is None:
+            self._refresh_authToken()
+        self.get_model_list()
+        if modelName not in self.models.keys():
+            print(f"Model {modelName} does not exist - cannot delete FIEF event in Model that does not exist")
+            return False
+        model_obj = self.models[modelName]
+        if eventType not in model_obj['EventTypes']:
+            print(f"Event Type {eventType} does not exist - cannot delete FIEF event that does not exist")
+            return False
+        requestResult = PerformRequest(self._base_headers, self._URL_Delete_Fief_Event,
+                                       request_obj={'id': "", 'modelName': modelName, 'eventType': eventType},
+                                       method='POST')
+        self.get_model_list()
+        if 'data' in requestResult:
+            return requestResult['data']
+        else:
+            return requestResult
+
     def delete_doc(self, docmeta):
-        if self.authToken is None:
+        if self._authToken is None:
             self._refresh_authToken()
         _req = {'runId': docmeta['runId'], 'fileKey': docmeta['fileKey']}
-        res = PerformRequest(self.base_headers, self.URL_Platform_Doc_Upload, _req, method='DELETE', encode_url=True)
+        res = PerformRequest(self._base_headers, self._URL_Platform_Doc_Upload, _req, method='DELETE', encode_url=True)
         if not res:
             print(f"Succeeded to delete document: {docmeta['name']} - fileKey: {docmeta['fileKey']}")
 
     def get_doc_analytics(self, docmeta, out_path: str = None) -> Dict:
-        if self.authToken is None:
+        if self._authToken is None:
             self._refresh_authToken()
         if docmeta['status'] != 'Completed':
             print(f'Document: {docmeta["name"]} - is still being analyzed. Results may be partial.')
 
         _req = {'ExclusiveStartKey': {}, 'runId': docmeta['runId'], 'fileKey': docmeta['fileKey']}
-        requestResult = PerformRequest(self.base_headers, self.URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
+        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
         doc_analytics = requestResult['data']
         if requestResult['ExclusiveStartKey']:
             while requestResult['ExclusiveStartKey']:
                 _req['ExclusiveStartKey'] = requestResult['ExclusiveStartKey']
-                requestResult = PerformRequest(self.base_headers, self.URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
+                requestResult = PerformRequest(self._base_headers, self._URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
                 doc_analytics.append(requestResult['data'])
 
         doc_analytics = sorted(doc_analytics, key=lambda x: x['index'])
@@ -229,8 +354,8 @@ class ProntoPlatformAPI:
             if key not in doc_model or not isinstance(doc_model[key], str):
                 return False, f"doc-model request is missing required key: {key}"
 
-        if doc_model['onModel'] not in self.allowed_models:
-            return False, f"doc-model request is using an invalid model: {doc_model['onModel']} -- Allowed Models: {self.allowed_models}"
+        if doc_model['onModel'] not in self.models:
+            return False, f"doc-model request is using an invalid model: {doc_model['onModel']} -- Allowed Models: {self.models}"
 
         if not doc_model['name'].endswith('.txt'):
             return False, f"doc-model request is using an invalid doc type: {doc_model['name']} -- Doc type must be .txt"
@@ -238,7 +363,7 @@ class ProntoPlatformAPI:
         return True, ''
 
     @staticmethod
-    def count_event_sentiments(data, isLLM):
+    def _count_event_sentiments(data, isLLM):
         def extract_importance(slotrec):
             for item in slotrec:
                 if item.get('SlotName') == 'importance':
@@ -329,8 +454,8 @@ class ProntoPlatformAPI:
         """
         Asynchronously retrieve the upload link for a document from the platform.
         """
-        url = self.URL_Platform_Doc_Upload
-        headers = self.base_headers
+        url = self._URL_Platform_Doc_Upload
+        headers = self._base_headers
         _req = doc_model.copy()
         _req['name'] = os.path.basename(doc_model['name'])
         _req['isLLM'] = False
@@ -370,7 +495,7 @@ class ProntoPlatformAPI:
                 async with session.post(url, data=data) as response:
                     if response.status == 204:
                         print(f"File '{file_path}' uploaded successfully")
-                        self.request_meta_map[
+                        self._request_meta_map[
                             f"{requestResult['document']['runId']}{requestResult['document']['fileKey']}"] = requestResult['document']
                     else:
                         response_text = await response.text()
@@ -381,14 +506,14 @@ class ProntoPlatformAPI:
         """
         Asynchronously call the platform analyzer for a given document.
         """
-        headers = {"Authorization": self.authToken, "pronto-granted": "R$w#8k@Pmz%2x2Dg#5fGz"}
+        headers = {"Authorization": self._authToken, "pronto-granted": "R$w#8k@Pmz%2x2Dg#5fGz"}
         doc_req = {"document": requestResult, "onModel": requestResult['onModel'], "streaming": False}
         cntr = 0
 
         async with aiohttp.ClientSession() as session:
             while cntr < 120:
                 try:
-                    async with session.post(self.URL_Platform_Doc_Analyze, json=doc_req, headers=headers) as response:
+                    async with session.post(self._URL_Platform_Doc_Analyze, json=doc_req, headers=headers) as response:
                         response_data = await response.json()
                         if response.status == 200:
                             print(f"Starting to analyze document '{requestResult['name']}'")
@@ -405,7 +530,7 @@ class ProntoPlatformAPI:
             raise Exception(f"Failed to analyze file after several attempts")
 
     async def _get_doc_analytics_async(self, docmeta):
-        if self.authToken is None:
+        if self._authToken is None:
             self._refresh_authToken()
         if docmeta['status'] != 'Completed':
             print(f'Document: {docmeta["name"]} - is still being analyzed. Results may be partial.')
@@ -413,12 +538,12 @@ class ProntoPlatformAPI:
         _req = {'ExclusiveStartKey': {}, 'runId': docmeta['runId'], 'fileKey': docmeta['fileKey']}
         doc_analytics = []
         async with aiohttp.ClientSession() as session:
-            requestResult = await self._perform_request_async(session, self.base_headers, self.URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
+            requestResult = await self._perform_request_async(session, self._base_headers, self._URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
             doc_analytics.extend(requestResult['data'])
 
             while requestResult.get('ExclusiveStartKey'):
                 _req['ExclusiveStartKey'] = requestResult['ExclusiveStartKey']
-                requestResult = await self._perform_request_async(session, self.base_headers, self.URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
+                requestResult = await self._perform_request_async(session, self._base_headers, self._URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
                 doc_analytics.extend(requestResult['data'])
 
         doc_analytics = sorted(doc_analytics, key=lambda x: x['index'])
@@ -447,13 +572,13 @@ class ProntoPlatformAPI:
         print("All documents uploaded successfully.")
 
         # Setup and start the WebSocket connection first
-        websocket_coro = analyze_docs_websocket(self.URL_Doc_Results_WebSocket, self.authToken, self._get_doc_analytics_async, len(self.request_meta_map))
+        websocket_coro = analyze_docs_websocket(self._URL_Doc_Results_WebSocket, self._authToken, self._get_doc_analytics_async, len(self._request_meta_map))
 
         # Give the WebSocket a moment to establish connection
         await asyncio.sleep(1)
 
         # Initiate analysis on the uploaded documents
-        analysis_tasks = [self._call_platform_analyzer(doc) for doc in self.request_meta_map.values()]
+        analysis_tasks = [self._call_platform_analyzer(doc) for doc in self._request_meta_map.values()]
         await asyncio.gather(*analysis_tasks)  # Start analysis concurrently
         print("Document analysis initiated for all documents.")
 
@@ -461,12 +586,12 @@ class ProntoPlatformAPI:
         async for result in websocket_coro:
             try:
                 # format results
-                docmeta = _safe_get(self.request_meta_map, f"{result['doc_meta']['runId']}{result['doc_meta']['fileKey']}", default=dict())
+                docmeta = _safe_get(self._request_meta_map, f"{result['doc_meta']['runId']}{result['doc_meta']['fileKey']}", default=dict())
                 result['doc_meta'] = {**docmeta, **result['doc_meta']}
                 if result['doc_meta']['isLLM']:
                     result['doc_meta']['onModel'] = f"LLM{result['doc_meta']['onModel']}"
 
-                dlscore_counts, event_sentiment_counts, importance_sentiment_counts = self.count_event_sentiments(result['doc_analytics'], isLLM=result['doc_meta']['isLLM'])
+                dlscore_counts, event_sentiment_counts, importance_sentiment_counts = self._count_event_sentiments(result['doc_analytics'], isLLM=result['doc_meta']['isLLM'])
                 result['doc_meta']['sentiment'] = event_sentiment_counts
                 result['doc_meta']['DLSentiment'] = dlscore_counts
                 result['doc_meta']['importanceSentiment'] = importance_sentiment_counts
@@ -485,9 +610,9 @@ class ProntoPlatformAPI:
         print("Analyzer completed")
         if not keep_results:
             # delete documents
-            for k, doc_meta in self.request_meta_map.items():
+            for k, doc_meta in self._request_meta_map.items():
                 self.delete_doc(doc_meta)
-        self.request_meta_map = dict()  # Clear the map after processing is complete
+        self._request_meta_map = dict()  # Clear the map after processing is complete
 
     async def analyze_text(self, text: Union[str, List[str]], model: str, out_dir: str = None, keep_results: bool = True) -> AsyncGenerator[Dict, None]:
         if isinstance(text, str):
