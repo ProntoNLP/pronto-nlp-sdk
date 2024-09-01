@@ -80,11 +80,13 @@ Each document_request must contain:
 
 If you provide an out_dir, results will be written out to JSON files in that directory.
 If no out_dir is given, results will be returned for the user to further process.
+
 The analyzer functions also accept a 'keep_results' parameter (default: True), which will store the document analytics on the ProntoNLP Platform in User Documents.
 (Reminder: all documents uploaded are completely secure and private to the user)
+
 All results will be written or returned as they become available.
 
-Currently, the SDK supports '.txt' inputs only.
+Currently, the SDK supports '.txt' and string inputs only.
 
 The models can be any of your FIEF models (see below) or one of ProntoNLP's LLMs.
 
