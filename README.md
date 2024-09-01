@@ -69,6 +69,15 @@ pronto.delete_doc(docs[0])
 print("Document deleted successfully")
 ```
 
+### Document Smart Search
+
+The SDK also allows users to take advantage of ProntoNLP's Smart Search capabilities.
+This feature enables powerful keyword-based searches by leveraging vector search technology and ProtonNLP's advanced analytics. 
+Users can perform smart searches across specified data sources, document types, sectors, and user watchlists.
+The system efficiently processes large datasets, allowing for precise retrieval of documents and insights using state-of-the-art vector representations.
+
+
+
 ### Asynchronous Document Processing
 
 The SDK supports asynchronous document processing for uploading, analyzing, and saving results. 
