@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='pronto_nlp',
-    version='0.3.1',
+    version='0.3.5',
     packages=find_packages(),
     install_requires=[
         'boto3',
@@ -13,6 +13,7 @@ setup(
         'asyncio',
         'aiohttp',
         'aiofiles',
+        'tqdm',
     ],
     entry_points={
         'console_scripts': [

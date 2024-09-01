@@ -1,8 +1,14 @@
+import copy
 import sys
 import urllib.request
 from typing import Union, List, Dict, AsyncGenerator
 import requests
+from collections import defaultdict
+from itertools import takewhile
+from tqdm import tqdm
+from multiprocessing import Pool
 import re
+from datetime import datetime, timedelta
 from urllib.parse import urlencode, quote
 import asyncio
 import websockets
@@ -56,8 +62,12 @@ def PerformRequest(headers, url, request_obj=None, method='POST', check_response
         raise ValueError("Invalid method. Supported methods are 'POST' and 'GET'")
 
     if check_response:
+        if response.status_code == 504:
+            response = requests.post(url, headers=headers, data=body, timeout=120)
+
         if response.status_code != 200:
             print(f"Request Failed. Status code: {response.status_code}, Response: {response.text}")
+
     try:
         return response.json()
     except json.JSONDecodeError:
@@ -91,6 +101,12 @@ def _get_dict_record(records, key, value):
         if key in record and record[key] == value:
             return record
     return None
+
+
+def _chunk_list(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 
 class ProntoWebSocketClient:
@@ -170,11 +186,12 @@ class ProntoPlatformAPI:
         self._URL_Platform_Doc_Results = "https://server-prod.prontonlp.com/reflect/results"
         self._URL_Doc_Results_WebSocket = "wss://socket-prod.prontonlp.com/"
 
-        # self._URL_Platform_Vector_Search = "https://server-prod.prontonlp.com/get-vector-search-results"
+        self._URL_Platform_Vector_Search = "https://server-prod.prontonlp.com/get-vector-search-results"
+        self._URL_Platform_Result_Filters = "https://server-prod.prontonlp.com/get-filters"
+        self._URL_Platform_Result_Datas = "https://server-prod.prontonlp.com/get-sentences"
 
-        # self.URL_Get_Fief_Models = "https://server-prod.prontonlp.com/get-user-models"
-        self._URL_Get_Models_Events = "https://server-prod.prontonlp.com/models/events"
-
+        self._URL_Platform_Watchlist = "https://server-prod.prontonlp.com/watchlists"
+        self._URL_Get_Models_Events = "https://server-prod.prontonlp.com/models/get-models-events"
         self._URL_Get_Fief_Event_Rules = "https://server-prod.prontonlp.com/event-rules"
         self._URL_Create_Fief_Model = "https://server-prod.prontonlp.com/save-user-model"
         self._URL_Delete_Fief_Model = "https://server-prod.prontonlp.com/delete-user-model"
@@ -190,6 +207,7 @@ class ProntoPlatformAPI:
         self.models = dict()
         self._refresh_authToken()
         self.get_model_list()
+        self._platform_corpus_map = {'transcripts': 'S&P Transcripts', 'sec': 'SEC Filings', 'nonsec': 'Non-SEC Filings'}
 
     def _refresh_authToken(self):
         self._authToken = SignIn(self.user, self.password)
@@ -335,6 +353,148 @@ class ProntoPlatformAPI:
                 os.path.join(out_path, f"{_strip_file_suffix(docmeta['name'])}_{docmeta['onModel']}.json"), doc_results)
 
         return doc_results
+
+    @staticmethod
+    def aggregate_filter_records(records):
+        if 'groupKey' in records[0]:  # Check if the first record contains 'groupKey'
+            aggregated = defaultdict(list)
+            for record in records:
+                aggregated[record['groupKey']].append(record['label'])
+            return dict(aggregated)
+        else:
+            # If no groupKey is present, just return the labels as a list
+            return {'marketCaps': [record['label'] for record in records]}
+
+    def get_smart_search_filters(self, corpus):
+        corpus = corpus.lower()
+        if corpus not in ('transcripts', 'sec', 'nonsec'):
+            raise ValueError(f"Corpus must be one of these options: ['transcripts', 'sec', 'nonsec'], you chose {corpus}")
+        platform_corpus_name = self._platform_corpus_map[corpus]
+        resFilters =  PerformRequest(self._base_headers, self._URL_Platform_Result_Filters,  request_obj={'corpus': platform_corpus_name}, method='POST')['data']
+
+        doctype_filters = self.aggregate_filter_records(resFilters['documentTypes'])
+        sector_filters = self.aggregate_filter_records(resFilters['subSectors'])
+        # marketcap_filters = self.aggregate_filter_records(resFilters['marketCaps'])
+
+        # get watchlist filters
+        watchlist_filters = self.get_watchlists()
+
+        return {'docTypes': doctype_filters, 'sectors': sector_filters, 'watchLists': watchlist_filters} #, 'marketCaps': marketcap_filters}
+
+    def get_watchlists(self):
+        watchlist_filters = {}
+        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Watchlist, method='GET').get('data', None)
+        if requestResult:
+            watchlist_filters = defaultdict(list)
+            for rec in requestResult:
+                watchlist_filters[rec['watchlistName']].extend(rec['companies'])
+        return watchlist_filters
+
+    def get_smart_search_full_results(self, sent_id_recs, similarity_threshold):
+        # filter sent_ids by threshold
+        sent_ids_fltrd = [r for r in takewhile(lambda x: x['score'] >= similarity_threshold, sent_id_recs)]
+        sent_ids_dict = {record['id']: record['score'] for record in sent_ids_fltrd}
+        exclude_fields = ['keywordsPositions', 'events', 'DLSentiment', 'speakerNameId', 'speakerCompanyId']
+
+        full_results = []
+        for sent_id_chunk in _chunk_list(sent_ids_fltrd, 100):
+            sent_ids = [x['id'] for x in sent_id_chunk]
+            request_obj = {'sentencesIds': sent_ids, 'excludes': exclude_fields}
+            requestResult = PerformRequest(self._base_headers, self._URL_Platform_Result_Datas, request_obj=request_obj, method='POST')
+            if requestResult.get('data', None):
+                res = [{**record['_source'], '_id': record['_id'], 'similarity_score': sent_ids_dict[record['_id']]} for record in requestResult['data']['sentences']]
+                full_results.append(res)
+
+        full_results[:] = [item for sublist in full_results for item in sublist]
+        full_results.sort(key=lambda x: x['similarity_score'], reverse=True)
+
+        return full_results
+
+    def process_subQ(self, args):
+        q_name, request_obj, similarity_threshold = args
+        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Vector_Search, request_obj=request_obj, method='POST')
+        recs = self.get_smart_search_full_results(requestResult['data'], similarity_threshold)
+        return q_name, recs
+
+
+    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None, similarity_threshold=.50):
+        search_type = None
+        resFilters = self.get_smart_search_filters(corpus)
+        available_doctypes = list(resFilters['docTypes'].values())[0]
+        available_sectors = list(resFilters['sectors'].keys())
+        available_watchlists = list(resFilters['watchLists'].keys())
+
+        default_doctypes = {
+            'transcripts': {'label': 'Earnings Calls'},
+            'sec': {'label': '10-Q'},
+            'nonsec': {'label': 'QR'},
+        }
+
+        if sector is None and watchlist is None:
+            raise ValueError(f"Sector or Watchlist must be specified\n Sectors -> {available_sectors}\n Watchlists -> {available_watchlists}")
+
+        if sector is not None:
+            if sector not in available_sectors:
+                raise ValueError(f"Sector must be one of these options -> {available_sectors}, you chose {sector}")
+            else:
+                search_type = 'sector'
+
+        if watchlist is not None:
+            if watchlist not in available_watchlists:
+                raise ValueError(f"Watchlist must be one of these options -> {available_watchlists}, you chose {watchlist}")
+            else:
+                search_type = 'watchlist'
+
+        if doc_type is None:
+            doc_type = default_doctypes[corpus]
+            print(f"No doc_type provided, defaulting to '{doc_type['label']}'")
+        else:
+            if doc_type not in available_doctypes:
+                raise ValueError(
+                    f"doc_type must be one of these options -> {available_doctypes}, you chose {doc_type}")
+
+        if start_date is None:
+            start_date = (datetime.today() - timedelta(days=365)).strftime("%Y-%m-%d")
+            print(f"No start_date provided, defaulting to '{start_date}'")
+        if end_date is None:
+            end_date = datetime.today().strftime("%Y-%m-%d")
+            print(f"No end_date provided, defaulting to '{end_date}'")
+
+        request_obj = {
+            'dateRange': {'gte': start_date, 'lte': end_date},
+            'documentTypes': [doc_type],
+            'isMacro': False,
+            'searchQuery': searchQ,
+            'size': 5_000,
+            'returnPineconeResults': True,
+        }
+
+        if search_type == 'sector':
+            request_obj['focusOn'] = 'sectors'
+            with Pool(4) as pool:
+                tasks = []
+                for subsector in resFilters['sectors'][sector]:
+                    req_obj = copy.deepcopy(request_obj)
+                    req_obj['subSectors'] = [{'label': subsector, 'groupKey': sector}]
+                    tasks.append((subsector, req_obj, similarity_threshold))
+
+                results = list(tqdm(pool.imap(self.process_subQ, tasks), total=len(tasks)))
+
+        elif search_type == 'watchlist':
+            request_obj['focusOn'] = 'watchlist'
+            request_obj['focusOnValues'] = [{'key': watchlist, 'value': resFilters['watchLists'][watchlist]}]
+            task = (watchlist, request_obj, similarity_threshold)
+            results = [self.process_subQ(task)]
+
+        else:
+            raise NotImplementedError
+
+        # Combine results into a single dictionary
+        datas = defaultdict(list)
+        for qname, recs in results:
+            datas[qname].extend(recs)
+
+        return dict(datas)
 
     def _validate_doc_model(self, doc_model):
         """
