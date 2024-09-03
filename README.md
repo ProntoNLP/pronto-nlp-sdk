@@ -154,7 +154,7 @@ if __name__ == "__main__":
 ```
 
 &nbsp;
-### Document Smart Search
+### Corpus Smart Search
 
 The SDK also allows users to take advantage of ProntoNLP's Smart Search capabilities.
 This feature enables powerful keyword-based searches by leveraging vector search technology and ProtonNLP's advanced analytics. 
