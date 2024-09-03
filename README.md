@@ -84,8 +84,8 @@ Input parameters include:
 - sector: a sector to search over (sector or watchlist must be specified)
 - watchlist: a watchlist created by the user on the platform (sector or watchlist must be specified)
 - doc_type: a document type from the corpus to search over (default: 'transcripts'='Earnings Calls', 'sec'='10-Q', 'nonsec'='QR')
-- start_date: start date for document search (default=current_date - 1 year)
-- end_date: end date for document search (default=current_date)
+- start_date: start date (YYYY-MM-DD) for document search (default=current_date - 1 year)
+- end_date: end date (YYYY-MM-DD) for document search (default=current_date)
 - similarity_threshold: retrieve sentences with similarity scores greater than value (default=.50)
 
 ```python
