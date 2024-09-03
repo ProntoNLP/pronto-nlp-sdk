@@ -109,6 +109,16 @@ def _chunk_list(lst, n):
         yield lst[i:i + n]
 
 
+def _is_valid_date_format(date_string):
+    try:
+        # Try to parse the date string in the YYYY-MM-DD format
+        datetime.strptime(date_string, "%Y-%m-%d")
+        return True
+    except ValueError:
+        # If a ValueError is raised, the format is incorrect
+        return False
+
+
 class ProntoWebSocketClient:
     def __init__(self, base_uri, authToken, result_callback, reconnect_interval=5):
         self.base_uri = base_uri
@@ -368,7 +378,7 @@ class ProntoPlatformAPI:
     def get_smart_search_filters(self, corpus):
         corpus = corpus.lower()
         if corpus not in ('transcripts', 'sec', 'nonsec'):
-            raise ValueError(f"Corpus must be one of these options: ['transcripts', 'sec', 'nonsec'], you chose {corpus}")
+            raise ValueError(f"Corpus must be one of these options -> ['transcripts', 'sec', 'nonsec'], you chose: '{corpus}'")
         platform_corpus_name = self._platform_corpus_map[corpus]
         resFilters =  PerformRequest(self._base_headers, self._URL_Platform_Result_Filters,  request_obj={'corpus': platform_corpus_name}, method='POST')['data']
 
@@ -388,7 +398,7 @@ class ProntoPlatformAPI:
             watchlist_filters = defaultdict(list)
             for rec in requestResult:
                 watchlist_filters[rec['watchlistName']].extend(rec['companies'])
-        return watchlist_filters
+        return dict(watchlist_filters)
 
     def get_smart_search_full_results(self, sent_id_recs, similarity_threshold):
         # filter sent_ids by threshold
@@ -417,7 +427,10 @@ class ProntoPlatformAPI:
         return q_name, recs
 
 
-    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None, similarity_threshold=.50):
+    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None, similarity_threshold=.50) -> Dict:
+        if not corpus or not searchQ:
+            raise ValueError("'corpus' and 'searchQ' must be specified")
+
         search_type = None
         resFilters = self.get_smart_search_filters(corpus)
         available_doctypes = list(resFilters['docTypes'].values())[0]
@@ -435,13 +448,13 @@ class ProntoPlatformAPI:
 
         if sector is not None:
             if sector not in available_sectors:
-                raise ValueError(f"Sector must be one of these options -> {available_sectors}, you chose {sector}")
+                raise ValueError(f"Sector must be one of these options -> {available_sectors}, you chose: '{sector}'")
             else:
                 search_type = 'sector'
 
         if watchlist is not None:
             if watchlist not in available_watchlists:
-                raise ValueError(f"Watchlist must be one of these options -> {available_watchlists}, you chose {watchlist}")
+                raise ValueError(f"Watchlist must be one of these options -> {available_watchlists}, you chose: '{watchlist}'")
             else:
                 search_type = 'watchlist'
 
@@ -451,25 +464,31 @@ class ProntoPlatformAPI:
         else:
             if doc_type not in available_doctypes:
                 raise ValueError(
-                    f"doc_type must be one of these options -> {available_doctypes}, you chose {doc_type}")
+                    f"doc_type must be one of these options -> {available_doctypes}, you chose: '{doc_type}'")
 
         if start_date is None:
             start_date = (datetime.today() - timedelta(days=365)).strftime("%Y-%m-%d")
             print(f"No start_date provided, defaulting to '{start_date}'")
+        elif not _is_valid_date_format(start_date):
+            raise ValueError(f"start_date must be of type 'YYYY-MM-DD', you chose: '{start_date}'")
+
         if end_date is None:
             end_date = datetime.today().strftime("%Y-%m-%d")
             print(f"No end_date provided, defaulting to '{end_date}'")
+        elif not _is_valid_date_format(end_date):
+            raise ValueError(f"end_date must be of type 'YYYY-MM-DD', you chose: '{end_date}'")
 
         request_obj = {
             'dateRange': {'gte': start_date, 'lte': end_date},
             'documentTypes': [doc_type],
             'isMacro': False,
             'searchQuery': searchQ,
-            'size': 5_000,
+            'size': 6_000,
             'returnPineconeResults': True,
         }
 
         if search_type == 'sector':
+            print('Running Sector based Query')
             request_obj['focusOn'] = 'sectors'
             with Pool(4) as pool:
                 tasks = []
@@ -481,6 +500,7 @@ class ProntoPlatformAPI:
                 results = list(tqdm(pool.imap(self.process_subQ, tasks), total=len(tasks)))
 
         elif search_type == 'watchlist':
+            print('Running Watchlist based Query')
             request_obj['focusOn'] = 'watchlist'
             request_obj['focusOnValues'] = [{'key': watchlist, 'value': resFilters['watchLists'][watchlist]}]
             task = (watchlist, request_obj, similarity_threshold)
@@ -800,3 +820,4 @@ class ProntoPlatformAPI:
         finally:
             for file_path in temp_files:
                 os.unlink(file_path)
+
