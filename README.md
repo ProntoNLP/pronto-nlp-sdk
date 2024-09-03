@@ -102,7 +102,8 @@ Users can also define a watchlist of companies on the platform, and then choose 
 srch_res = pronto.run_smart_search(corpus='transcripts', watchlist='favs', searchQ='supply issues', start_date='2024-01-01')
 ```
 
-To view the possible input filters, users can call 'get_smart_search_filters' which returns a dictionary with the various document types, sectors, and watchlists available:
+To view the possible input filters, users can call 'get_smart_search_filters' with the desired corpus, which returns a dictionary with the various document types, sectors, and watchlists available.
+The supported corpuses are: ['transcripts', 'sec', 'nonsec']:
 
 ```python
 resFilters = pronto.get_smart_search_filters(corpus='transcripts')
