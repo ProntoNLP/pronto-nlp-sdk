@@ -13,13 +13,13 @@ pip install git+https://github.com/ProntoNLP/pronto-nlp-sdk.git
 ## Usage
 
 ### User Authentication
-Users must authenticate each request with their org:username and password.
+Users must authenticate the ProntoNLP API with their org:username and password.
 Your org name appears in the URL used for accessing the ProntoNLP platform.
 
 For example, if your URL to access the ProntoNLP platform is:
 'prontofund.prontonlp.com'
 
-Then your username for all API requests should be:
+Then your username for should be:
 
 `prontofund:user@example.com`
 
