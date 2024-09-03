@@ -69,6 +69,47 @@ pronto.delete_doc(docs[0])
 print("Document deleted successfully")
 ```
 
+### Document Smart Search
+
+The SDK also allows users to take advantage of ProntoNLP's Smart Search capabilities.
+This feature enables powerful keyword-based searches by leveraging vector search technology and ProtonNLP's advanced analytics. 
+Users can perform smart searches across specified data sources, document types, sectors, and user watchlists.
+The system efficiently processes large datasets, allowing for precise retrieval of documents and insights using state-of-the-art vector representations.
+
+Users can run searches using the 'run_smart_search' function.
+
+Input parameters include:
+- corpus: ['transcripts', 'sec', 'nonsec'] (required)
+- searchQ: keyword / phrase to search (required)
+- sector: a sector to search over (sector or watchlist must be specified)
+- watchlist: a watchlist created by the user on the platform (sector or watchlist must be specified)
+- doc_type: a document type from the corpus to search over (default: 'transcripts'='Earnings Calls', 'sec'='10-Q', 'nonsec'='QR')
+- start_date: start date (YYYY-MM-DD) for document search (default=current_date - 1 year)
+- end_date: end date (YYYY-MM-DD) for document search (default=current_date)
+- similarity_threshold: retrieve sentences with similarity scores greater than value (default=.50)
+
+```python
+srch_res = pronto.run_smart_search(corpus='sec', sector='Industrials', searchQ='AI')
+```
+
+Results are returned as a dictionary, with each subsector as a key and the list of results as the corresponding value.
+For more results, users can adjust the similarity threshold and/or limit the timeframe by using start and end dates.
+Note that lowering the similarity threshold will return a wider variety of results.
+
+Users can also define a watchlist of companies on the platform, and then choose to search over just those companies:
+
+```python
+srch_res = pronto.run_smart_search(corpus='transcripts', watchlist='favs', searchQ='supply issues', start_date='2024-01-01')
+```
+
+To view the possible input filters, users can call 'get_smart_search_filters' with the desired corpus, which returns a dictionary with the various document types, sectors, and watchlists available.
+The supported corpuses are: ['transcripts', 'sec', 'nonsec']:
+
+```python
+resFilters = pronto.get_smart_search_filters(corpus='transcripts')
+```
+
+
 ### Asynchronous Document Processing
 
 The SDK supports asynchronous document processing for uploading, analyzing, and saving results. 
