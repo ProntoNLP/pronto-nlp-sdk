@@ -465,6 +465,8 @@ class ProntoPlatformAPI:
             if doc_type not in available_doctypes:
                 raise ValueError(
                     f"doc_type must be one of these options -> {available_doctypes}, you chose: '{doc_type}'")
+            else:
+                doc_type = {'label': doc_type}
 
         if start_date is None:
             start_date = (datetime.today() - timedelta(days=365)).strftime("%Y-%m-%d")
