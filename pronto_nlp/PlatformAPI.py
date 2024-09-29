@@ -502,24 +502,7 @@ class ProntoPlatformAPI:
                 nResults = 10_000
             else:
                 raise ValueError(f"Parameter 'nResults' must be 'all' or an integer, got {nResults}")
-        # if allResults:
-        #     nResults = 10_000
-        #     allResults = False
-        # if allResults:
-        #     requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,request_obj=request_obj,method='POST')
-        #     recs = self.get_topic_research_full_results(requestResult['data'])
-        #     requestResultList.extend(recs)
-        #     nRes = requestResult['data']['total']
-        #     numLoops = math.floor(nRes / size)
-        #     for i in range(numLoops):
-        #         request_obj['from'] = (i+1) * size
-        #         requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
-        #                                        request_obj=request_obj,
-        #                                        method='POST')
-        #         if requestResult.get('data', None):
-        #             recs = self.get_topic_research_full_results(requestResult['data'])
-        #             requestResultList.extend(recs)
-        # elif nResults:
+
         if nResults <= size:
             size = nResults
             request_obj['size'] = size
