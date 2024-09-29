@@ -493,29 +493,47 @@ class ProntoPlatformAPI:
         recs = self.get_smart_search_full_results(requestResult['data'], similarity_threshold)
         return q_name, recs
 
-    def process_research_topicQ(self, request_obj, nResults, allResults):
+    def process_research_topicQ(self, request_obj, nResults):
         size = 1_000
         requestResultList = []
-        if allResults:
-            nResults = 10_000
-            allResults = False
-        if allResults:
-            requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,request_obj=request_obj,method='POST')
-            recs = self.get_topic_research_full_results(requestResult['data'])
-            requestResultList.extend(recs)
-            nRes = requestResult['data']['total']
-            numLoops = math.floor(nRes / size)
+
+        if isinstance(nResults, str):
+            if nResults == 'all':
+                nResults = 10_000
+            else:
+                raise ValueError(f"Parameter 'nResults' must be 'all' or an integer, got {nResults}")
+        # if allResults:
+        #     nResults = 10_000
+        #     allResults = False
+        # if allResults:
+        #     requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,request_obj=request_obj,method='POST')
+        #     recs = self.get_topic_research_full_results(requestResult['data'])
+        #     requestResultList.extend(recs)
+        #     nRes = requestResult['data']['total']
+        #     numLoops = math.floor(nRes / size)
+        #     for i in range(numLoops):
+        #         request_obj['from'] = (i+1) * size
+        #         requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
+        #                                        request_obj=request_obj,
+        #                                        method='POST')
+        #         if requestResult.get('data', None):
+        #             recs = self.get_topic_research_full_results(requestResult['data'])
+        #             requestResultList.extend(recs)
+        # elif nResults:
+        if nResults <= size:
+            size = nResults
+            request_obj['size'] = size
+            requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
+                                           request_obj=request_obj,
+                                           method='POST')
+            if requestResult:
+                recs = self.get_topic_research_full_results(requestResult['data'])
+                requestResultList.extend(recs)
+        else:
+            numLoops = math.ceil(nResults / size)
             for i in range(numLoops):
-                request_obj['from'] = (i+1) * size
-                requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
-                                               request_obj=request_obj,
-                                               method='POST')
-                if requestResult.get('data', None):
-                    recs = self.get_topic_research_full_results(requestResult['data'])
-                    requestResultList.extend(recs)
-        elif nResults:
-            if nResults <= size:
-                size = nResults
+                request_obj['from'] = i * size
+                size = min(nResults - i*size, size)
                 request_obj['size'] = size
                 requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
                                                request_obj=request_obj,
@@ -523,18 +541,6 @@ class ProntoPlatformAPI:
                 if requestResult:
                     recs = self.get_topic_research_full_results(requestResult['data'])
                     requestResultList.extend(recs)
-            else:
-                numLoops = math.ceil(nResults / size)
-                for i in range(numLoops):
-                    request_obj['from'] = i * size
-                    size = min(nResults - i*size, size)
-                    request_obj['size'] = size
-                    requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
-                                                   request_obj=request_obj,
-                                                   method='POST')
-                    if requestResult:
-                        recs = self.get_topic_research_full_results(requestResult['data'])
-                        requestResultList.extend(recs)
 
         # request_obj['size'] = size
         return requestResultList
@@ -584,7 +590,7 @@ class ProntoPlatformAPI:
                 doc_type = {'label': doc_type}
 
         if start_date is None:
-            start_date = (datetime.today() - timedelta(days=365)).strftime("%Y-%m-%d")
+            start_date = (datetime.today() - timedelta(days=90)).strftime("%Y-%m-%d")
             print(f"No start_date provided, defaulting to '{start_date}'")
         elif not _is_valid_date_format(start_date):
             raise ValueError(f"start_date must be of type 'YYYY-MM-DD', you chose: '{start_date}'")
@@ -609,7 +615,7 @@ class ProntoPlatformAPI:
         allEventTypes.sort()
         return allEventTypes
 
-    def run_topic_research(self, corpus, nResults=1_000, eventType=None, freeText=None, allResults=False, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None) -> Dict:
+    def run_topic_research(self, corpus, nResults=1_000, eventType=None, freeText=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None) -> List:
         search_type, doc_type, start_date, end_date, resFilters = self.checkRequest(corpus, sector, watchlist, doc_type, start_date, end_date)
         size = 1_000
         platform_corpus_name = self._platform_corpus_map[corpus]
@@ -631,10 +637,16 @@ class ProntoPlatformAPI:
             request_obj['freeText'] = [freeText]
 
         if eventType:
-            if eventType in self.models['LLMAlpha']['EventTypes']:
+            ## for now only Alpha and LLMAlpha Topics are available
+            if corpus == 'transcripts':
+                avail_topics = self.models['LLMAlpha']['EventTypes']
+            else:
+                avail_topics = self.models['Alpha']['EventTypes']
+
+            if eventType in avail_topics:
                 request_obj['eventTypes'] = [eventType]
             else:
-                raise ValueError(f"eventType must be one of these options -> {self.models['LLMAlpha']['EventTypes']:}")
+                raise ValueError(f"eventType must be one of these options -> {avail_topics}")
 
 
         if search_type == 'sector':
@@ -648,7 +660,7 @@ class ProntoPlatformAPI:
         else:
             raise NotImplementedError
 
-        results = self.process_research_topicQ(request_obj, nResults, allResults)
+        results = self.process_research_topicQ(request_obj, nResults)
 
         return results
 
