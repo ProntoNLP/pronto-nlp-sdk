@@ -62,7 +62,6 @@ You can retrieve the list of your previously analyzed documents available on the
 ```python
 # Get the list of documents
 docs = pronto.get_doc_list()
-print("Documents:", docs)
 ```
 
 **Retrieve Document Analytics**
