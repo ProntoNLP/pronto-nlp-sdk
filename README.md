@@ -36,10 +36,11 @@ pronto = pAPI.ProntoPlatformAPI(user, password)
 The ProntoNLP Platform API SDK allows users to interact with the ProntoNLP platform for document analysis. 
 This SDK provides methods for uploading and analyzing documents using ProntoNLPs advanced NLP Platform.
 
-There are 3 main functions powered by the PlatformAPI Module:
+These are the main functions powered by the PlatformAPI Module:
 1. Document Management and Analytics
 2. Document Upload and Processing
 3. Corpus Smart Search
+4. Topic Research
 
 &nbsp;
 ### Document Management and Analytics
@@ -169,7 +170,7 @@ Input parameters include:
 - sector: a sector to search over (sector or watchlist must be specified)
 - watchlist: a watchlist created by the user on the platform (sector or watchlist must be specified)
 - doc_type: a document type from the corpus to search over (default: 'transcripts'='Earnings Calls', 'sec'='10-Q', 'nonsec'='QR')
-- start_date: start date (YYYY-MM-DD) for document search (default=current_date - 1 year)
+- start_date: start date (YYYY-MM-DD) for document search (default=current_date - 90 days)
 - end_date: end date (YYYY-MM-DD) for document search (default=current_date)
 - similarity_threshold: retrieve sentences with similarity scores greater than value (default=.50)
 
@@ -185,6 +186,53 @@ Users can also define a watchlist of companies on the platform, and then choose 
 
 ```python
 srch_res = pronto.run_smart_search(corpus='transcripts', watchlist='favs', searchQ='supply issues', start_date='2024-01-01')
+```
+
+To view the possible input filters, users can call 'get_smart_search_filters' with the desired corpus, which returns a dictionary with the various document types, sectors, and watchlists available.
+The supported corpuses are: ['transcripts', 'sec', 'nonsec']:
+
+```python
+resFilters = pronto.get_smart_search_filters(corpus='transcripts')
+```
+
+&nbsp;
+### Topic Research
+
+The SDK also allows users to take advantage of ProntoNLP's Topic Research capabilities.
+This feature enables powerful financial analysis across a variety of topics, powered by our proprietary AlphaLLM and FIEF models. 
+Users can perform topic research across specified data sources, document types, sectors, and user watchlists.
+
+Users can run the analysis using the 'run_topic_research' function.
+
+Input parameters include:
+- corpus: ['transcripts', 'sec', 'nonsec'] (required)
+- nResults: number of results to return (default=1,000)
+- eventType: name of eventtype / topic to search (default is all topics)
+- freeText: keyword term to search, can be used in conjunction with eventType or separately (default is None)
+- sector: a sector to search over (sector or watchlist must be specified)
+- watchlist: a watchlist created by the user on the platform (sector or watchlist must be specified)
+- doc_type: a document type from the corpus to search over (default: 'transcripts'='Earnings Calls', 'sec'='10-Q', 'nonsec'='QR')
+- start_date: start date (YYYY-MM-DD) for document search (default=current_date - 90 days)
+- end_date: end date (YYYY-MM-DD) for document search (default=current_date)
+
+```python
+topic_res = pronto.run_topic_research(corpus='transcripts', eventType='CashFlow', sector='Information Technology', start_date='2024-01-01', nResults=500)
+```
+
+Results are returned as a list of records ordered by the document date (desc), with each record detailing the event identified along with the relevant document metadata.
+For the 'transcripts' corpus, the proprietary AlphaLLM model is used. For the others, the results are identified using the FIEF Alpha model.
+Results are capped at 10,000 results per query, for more results, users can adjust the timeframe by using start and end dates.
+
+Users can also define a watchlist of companies on the platform, and then choose to search over just those companies:
+
+```python
+srch_res = pronto.run_topic_research(corpus='sec', watchlist='favs', start_date='2024-01-01')
+```
+
+To view the possible eventType inputs, users can view the 'pronto.models' attribute:
+```python
+llmalpha_events = pronto.models['LLMAlpha']['EventTypes']
+alpha_events = pronto.models['Alpha']['EventTypes']
 ```
 
 To view the possible input filters, users can call 'get_smart_search_filters' with the desired corpus, which returns a dictionary with the various document types, sectors, and watchlists available.
