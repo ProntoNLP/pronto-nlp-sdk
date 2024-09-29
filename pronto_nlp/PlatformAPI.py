@@ -3,6 +3,7 @@ import sys
 import urllib.request
 from typing import Union, List, Dict, AsyncGenerator
 import requests
+import math
 from collections import defaultdict
 from itertools import takewhile
 from tqdm import tqdm
@@ -210,17 +211,20 @@ class ProntoPlatformAPI:
         self._URL_Create_Fief_Pattern = ""
         self._URL_Delete_Fief_Pattern = "https://server-prod.prontonlp.com/delete-user-pattern"
 
-        self.user, self.password = user, password
+        self._URL_Paltform_Topic_Research_Results = "https://server-prod.prontonlp.com/researches/topic"
+        self._URL_Paltform_Topic_Research = "https://server-prod.prontonlp.com/get-research-results"
+        self._platform_corpus_map = {'transcripts': 'S&P Transcripts', 'sec': 'SEC Filings',
+                                     'nonsec': 'Non-SEC Filings'}
+        self._user, self._password = user, password
         self._authToken = None
         self._base_headers = None
+        self._refresh_authToken()
         self.doc_list = list()
         self.models = dict()
-        self._refresh_authToken()
         self.get_model_list()
-        self._platform_corpus_map = {'transcripts': 'S&P Transcripts', 'sec': 'SEC Filings', 'nonsec': 'Non-SEC Filings'}
 
     def _refresh_authToken(self):
-        self._authToken = SignIn(self.user, self.password)
+        self._authToken = SignIn(self._user, self._password)
         self._base_headers = {"Content-Type": "application/json", "Authorization": self._authToken,
                              "pronto-granted": "R$w#8k@Pmz%2x2Dg#5fGz"}
 
@@ -253,6 +257,8 @@ class ProntoPlatformAPI:
             self._refresh_authToken()
         requestResult = PerformRequest(self._base_headers, self._URL_Get_Models_Events, method='GET')
         self.models = self._organize_fief_model_response(requestResult)
+        ## set LLMAlpha event types
+        self.models['LLMAlpha']['EventTypes'] = self._get_LLM_EventTypes()
         return self.models
 
     def get_fief_event_rules(self, modelName, eventType) -> List:
@@ -420,16 +426,122 @@ class ProntoPlatformAPI:
 
         return full_results
 
+    def get_topic_research_full_results(self, sent_id_recs):
+        transformed_data = []
+
+        # Check if sent_id_recs is a list with a single item
+        if isinstance(sent_id_recs, list) and len(sent_id_recs) == 1:
+            sent_id_recs = sent_id_recs[0]
+
+        # Ensure we're working with the "data" key
+        data_to_process = sent_id_recs.get("data", sent_id_recs)
+
+        # If data_to_process is still a list with one item, unpack it
+        if isinstance(data_to_process, list) and len(data_to_process) == 1:
+            data_to_process = data_to_process[0]
+
+        # Loop over each element in the "data" list
+        for element in sent_id_recs["data"]:
+            # Extract necessary values for the transformation
+            document_meta = element.get("documentMeta", {})
+            event_data = element.get("event", {})
+            slots_filter = element.get("slotsFilter", {})
+            tags = element.get("tags", [])
+
+            # Create the transformed element
+            transformed_element = {
+                "DLSentiment": element.get("DLSentiment", ""),
+                "importance": slots_filter.get("importance", ""),
+                "aspect": slots_filter.get("aspect", ""),
+                "comment": slots_filter.get("comment", ""),
+                "documentMeta": {
+                    "date": document_meta.get("date", ""),
+                    "country": document_meta.get("country", ""),
+                    "ticker": document_meta.get("ticker", ""),
+                    "documentType": document_meta.get("documentType", ""),
+                    "companyName": document_meta.get("companyName", ""),
+                    "corpus": document_meta.get("corpus", ""),
+                    "title": document_meta.get("title", ""),
+                    "hqCountry": document_meta.get("hqCountry", ""),
+                    "subSector": document_meta.get("subSector", ""),
+                    "companyId": document_meta.get("companyId", ""),
+                    "transcriptId": document_meta.get("transcriptId", ""),
+                    "exchange": document_meta.get("exchange", ""),
+                    "sector": document_meta.get("sector", ""),
+                    "day": document_meta.get("day", ""),
+                    "marketCap": document_meta.get("marketCap", 0)
+                },
+                "tags": tags,
+                "sentenceIndex": element.get("sentenceIndex", 0),
+                "paragraphIndex": element.get("paragraphIndex", 0),
+                "model": element.get("model", ""),
+                "text": element.get("text", ""),
+                "EventType": event_data.get("EventType", ""),
+                "EventText": event_data.get("EventText", ""),
+                "Polarity": event_data.get("Polarity", ""),
+                "llmTag": element.get("llmTag", "")
+            }
+
+            # Append the transformed element to the results list
+            transformed_data.append(transformed_element)
+
+        return transformed_data
+
     def process_subQ(self, args):
         q_name, request_obj, similarity_threshold = args
         requestResult = PerformRequest(self._base_headers, self._URL_Platform_Vector_Search, request_obj=request_obj, method='POST')
         recs = self.get_smart_search_full_results(requestResult['data'], similarity_threshold)
         return q_name, recs
 
+    def process_research_topicQ(self, request_obj, nResults, allResults):
+        size = 1_000
+        requestResultList = []
+        if allResults:
+            nResults = 10_000
+            allResults = False
+        if allResults:
+            requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,request_obj=request_obj,method='POST')
+            recs = self.get_topic_research_full_results(requestResult['data'])
+            requestResultList.extend(recs)
+            nRes = requestResult['data']['total']
+            numLoops = math.floor(nRes / size)
+            for i in range(numLoops):
+                request_obj['from'] = (i+1) * size
+                requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
+                                               request_obj=request_obj,
+                                               method='POST')
+                if requestResult.get('data', None):
+                    recs = self.get_topic_research_full_results(requestResult['data'])
+                    requestResultList.extend(recs)
+        elif nResults:
+            if nResults <= size:
+                size = nResults
+                request_obj['size'] = size
+                requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
+                                               request_obj=request_obj,
+                                               method='POST')
+                if requestResult:
+                    recs = self.get_topic_research_full_results(requestResult['data'])
+                    requestResultList.extend(recs)
+            else:
+                numLoops = math.ceil(nResults / size)
+                for i in range(numLoops):
+                    request_obj['from'] = i * size
+                    size = min(nResults - i*size, size)
+                    request_obj['size'] = size
+                    requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
+                                                   request_obj=request_obj,
+                                                   method='POST')
+                    if requestResult:
+                        recs = self.get_topic_research_full_results(requestResult['data'])
+                        requestResultList.extend(recs)
 
-    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None, similarity_threshold=.50) -> Dict:
-        if not corpus or not searchQ:
-            raise ValueError("'corpus' and 'searchQ' must be specified")
+        # request_obj['size'] = size
+        return requestResultList
+
+    def checkRequest(self, corpus, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None):
+        if not corpus:
+            raise ValueError("'corpus' must be specified")
 
         search_type = None
         resFilters = self.get_smart_search_filters(corpus)
@@ -441,10 +553,12 @@ class ProntoPlatformAPI:
             'transcripts': {'label': 'Earnings Calls'},
             'sec': {'label': '10-Q'},
             'nonsec': {'label': 'QR'},
+            'S&P Transcripts' : {'label': 'Earnings Calls'}
         }
 
         if sector is None and watchlist is None:
-            raise ValueError(f"Sector or Watchlist must be specified\n Sectors -> {available_sectors}\n Watchlists -> {available_watchlists}")
+            raise ValueError(
+                f"Sector or Watchlist must be specified\n Sectors -> {available_sectors}\n Watchlists -> {available_watchlists}")
 
         if sector is not None:
             if sector not in available_sectors:
@@ -454,7 +568,8 @@ class ProntoPlatformAPI:
 
         if watchlist is not None:
             if watchlist not in available_watchlists:
-                raise ValueError(f"Watchlist must be one of these options -> {available_watchlists}, you chose: '{watchlist}'")
+                raise ValueError(
+                    f"Watchlist must be one of these options -> {available_watchlists}, you chose: '{watchlist}'")
             else:
                 search_type = 'watchlist'
 
@@ -479,6 +594,68 @@ class ProntoPlatformAPI:
             print(f"No end_date provided, defaulting to '{end_date}'")
         elif not _is_valid_date_format(end_date):
             raise ValueError(f"end_date must be of type 'YYYY-MM-DD', you chose: '{end_date}'")
+
+        return search_type, doc_type, start_date, end_date, resFilters
+
+    def _get_LLM_EventTypes(self):
+        platform_corpus_name = self._platform_corpus_map['transcripts']
+        eventTypes = PerformRequest(self._base_headers, self._URL_Platform_Result_Filters,
+                                    request_obj={'corpus': platform_corpus_name, 'isLLM':True}, method='POST')['data']['eventTypes']
+        allEventTypes = []
+        for filter in eventTypes:
+            if filter['groupKey'] == 'AlphaLLM':
+                allEventTypes.append(filter['label'])
+
+        allEventTypes.sort()
+        return allEventTypes
+
+    def run_topic_research(self, corpus, nResults=1_000, eventType=None, freeText=None, allResults=False, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None) -> Dict:
+        search_type, doc_type, start_date, end_date, resFilters = self.checkRequest(corpus, sector, watchlist, doc_type, start_date, end_date)
+        size = 1_000
+        platform_corpus_name = self._platform_corpus_map[corpus]
+        doc_type = doc_type['label']
+        request_obj = {
+            "dateRange": {'gte': start_date, 'lte': end_date},
+            "documentTypes": [doc_type],
+            "size": size,
+            "from" : 0,
+            "sort" : "desc",
+            "isLLM": True,
+            "corpus": platform_corpus_name,
+            "searchEventTextQuery": ""
+        }
+
+        # if researchName:
+        #     request_obj['researchName'] = researchName
+        if freeText:
+            request_obj['freeText'] = [freeText]
+
+        if eventType:
+            if eventType in self.models['LLMAlpha']['EventTypes']:
+                request_obj['eventTypes'] = [eventType]
+            else:
+                raise ValueError(f"eventType must be one of these options -> {self.models['LLMAlpha']['EventTypes']:}")
+
+
+        if search_type == 'sector':
+            subSector = []
+            request_obj['sectors'] = [sector]
+            for subsector in resFilters['sectors'][sector]:
+                subSector.append(subsector)
+            request_obj['subSectors'] = subSector
+        elif watchlist:
+            request_obj['watchlist'] = resFilters['watchLists'][watchlist]
+        else:
+            raise NotImplementedError
+
+        results = self.process_research_topicQ(request_obj, nResults, allResults)
+
+        return results
+
+    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None, similarity_threshold=.50) -> Dict:
+        if not searchQ:
+            raise ValueError("'searchQ' must be specified")
+        search_type, doc_type, start_date, end_date, resFilters = self.checkRequest(corpus, sector, watchlist, doc_type, start_date, end_date)
 
         request_obj = {
             'dateRange': {'gte': start_date, 'lte': end_date},
@@ -515,7 +692,6 @@ class ProntoPlatformAPI:
         datas = defaultdict(list)
         for qname, recs in results:
             datas[qname].extend(recs)
-
         return dict(datas)
 
     def _validate_doc_model(self, doc_model):
