@@ -70,8 +70,12 @@ def PerformRequest(headers, url, request_obj=None, method='POST', check_response
             print(f"Request Failed. Status code: {response.status_code}, Response: {response.text}")
 
     try:
+        if url == 'https://server-prod.prontonlp.com/reflect/convert':
+            return response
         return response.json()
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        return response
+    except ValueError as e:
         return response
 
 
@@ -213,6 +217,7 @@ class ProntoPlatformAPI:
 
         self._URL_Paltform_Topic_Research_Results = "https://server-prod.prontonlp.com/researches/topic"
         self._URL_Paltform_Topic_Research = "https://server-prod.prontonlp.com/get-research-results"
+        self._URL_Convert_Pdf_to_Text = "https://server-prod.prontonlp.com/reflect/convert"
         self._platform_corpus_map = {'transcripts': 'S&P Transcripts', 'sec': 'SEC Filings',
                                      'nonsec': 'Non-SEC Filings'}
         self._user, self._password = user, password
@@ -260,6 +265,16 @@ class ProntoPlatformAPI:
         ## set LLMAlpha event types
         self.models['LLMAlpha']['EventTypes'] = self._get_LLM_EventTypes()
         return self.models
+
+    async def convertPdfToText(self, fileKey):
+        key = last_part = fileKey.split('/')[-1]
+        try:
+            requestResult = PerformRequest(self._base_headers, self._URL_Convert_Pdf_to_Text,
+                                           request_obj={'fileKey': key},
+                                           method='POST')
+            return requestResult
+        except Exception as e:
+            print(f'Error occured: {e}')
 
     def get_fief_event_rules(self, modelName, eventType) -> List:
         if self._authToken is None:
@@ -710,8 +725,8 @@ class ProntoPlatformAPI:
         if doc_model['onModel'] not in self.models:
             return False, f"doc-model request is using an invalid model: {doc_model['onModel']} -- Allowed Models: {self.models}"
 
-        if not doc_model['name'].endswith('.txt'):
-            return False, f"doc-model request is using an invalid doc type: {doc_model['name']} -- Doc type must be .txt"
+        if not (doc_model['name'].endswith('.txt') or doc_model['name'].endswith('.pdf')):
+            return False, f"doc-model request is using an invalid doc type: {doc_model['name']} -- Doc type must be .txt or .pdf"
 
         return True, ''
 
@@ -854,6 +869,10 @@ class ProntoPlatformAPI:
                         response_text = await response.text()
                         raise Exception(
                             f"Failed to upload file '{file_path}'. Status code: {response.status}, Response: {response_text}")
+        if file_path.endswith('.pdf'):
+            res = await self.convertPdfToText(signed_url['fields']['key'])
+            print (f'{file_path} converted successfully')
+        return signed_url
 
     async def _call_platform_analyzer(self, requestResult):
         """
@@ -908,6 +927,7 @@ class ProntoPlatformAPI:
             os.makedirs(out_dir)
 
         doc_model_reqs = []
+        # pdfDocs = []
         for d_m in doc_models:
             chk, reason = self._validate_doc_model(d_m)
             if not chk:
