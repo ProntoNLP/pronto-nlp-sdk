@@ -652,7 +652,7 @@ class ProntoPlatformAPI:
         }
 
         if sentiment:
-            request_obj['patternSentiment'] = [sentiment]
+            request_obj['patternSentiment'] = [sentiment.capitalize()]
 
         if country:
             request_obj['hqCountries'] = [country]
