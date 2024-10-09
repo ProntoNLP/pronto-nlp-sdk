@@ -214,6 +214,7 @@ class ProntoPlatformAPI:
         self._URL_Delete_Fief_Event = "https://server-prod.prontonlp.com/delete-user-event"
         self._URL_Create_Fief_Pattern = ""
         self._URL_Delete_Fief_Pattern = "https://server-prod.prontonlp.com/delete-user-pattern"
+        self._URL_Get_Meta_Data = "https://server-prod.prontonlp.com/get-metadata-results"
 
         self._URL_Paltform_Topic_Research_Results = "https://server-prod.prontonlp.com/researches/topic"
         self._URL_Paltform_Topic_Research = "https://server-prod.prontonlp.com/get-research-results"
@@ -305,6 +306,25 @@ class ProntoPlatformAPI:
         requestResult = PerformRequest(self._base_headers, self._URL_Create_Fief_Model, request_obj={'modelName': modelName}, method='POST')
         self.get_model_list()
         return requestResult['data']
+
+    def getCompanyId(self, companyName):
+        request_obj = {"retrieveType": "company"}
+
+        if len(companyName) > 2:
+            request_obj["searchCompaniesQuery"] = companyName
+
+        requestResult = PerformRequest(self._base_headers, self._URL_Get_Meta_Data,
+                                       request_obj=request_obj, method='POST')
+
+        companies = []
+        if requestResult['data']['results']:
+            for res in requestResult['data']['results']:
+                company = {'id': res['id'], 'name': res['displayName'], 'ticker': res['ticker']}
+                companies.append(company)
+            return companies
+        else:
+            response =  'no company found'
+            return response
 
     def delete_fief_model(self, modelName):
         if self._authToken is None:
@@ -422,6 +442,7 @@ class ProntoPlatformAPI:
         return dict(watchlist_filters)
 
     def get_smart_search_full_results(self, sent_id_recs, similarity_threshold):
+        # if sent_id_recs:
         # filter sent_ids by threshold
         sent_ids_fltrd = [r for r in takewhile(lambda x: x['score'] >= similarity_threshold, sent_id_recs)]
         sent_ids_dict = {record['id']: record['score'] for record in sent_ids_fltrd}
@@ -505,7 +526,7 @@ class ProntoPlatformAPI:
     def process_subQ(self, args):
         q_name, request_obj, similarity_threshold = args
         requestResult = PerformRequest(self._base_headers, self._URL_Platform_Vector_Search, request_obj=request_obj, method='POST')
-        recs = self.get_smart_search_full_results(requestResult['data'], similarity_threshold)
+        recs = self.get_smart_search_full_results(requestResult.get('data',[]), similarity_threshold)
         return q_name, recs
 
     def process_research_topicQ(self, request_obj, nResults):
@@ -543,7 +564,7 @@ class ProntoPlatformAPI:
         # request_obj['size'] = size
         return requestResultList
 
-    def checkRequest(self, corpus, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None):
+    def checkRequest(self, corpus, companies=None ,sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None):
         if not corpus:
             raise ValueError("'corpus' must be specified")
 
@@ -560,17 +581,18 @@ class ProntoPlatformAPI:
             'S&P Transcripts' : {'label': 'Earnings Calls'}
         }
 
-        if sector is None and watchlist is None:
+        if sector is None and watchlist is None and companies is None:
             raise ValueError(
                 f"Sector or Watchlist must be specified\n Sectors -> {available_sectors}\n Watchlists -> {available_watchlists}")
 
-        if sector is not None:
+        if companies is not None:
+            search_type = 'company'
+        elif sector is not None:
             if sector not in available_sectors:
                 raise ValueError(f"Sector must be one of these options -> {available_sectors}, you chose: '{sector}'")
             else:
                 search_type = 'sector'
-
-        if watchlist is not None:
+        elif watchlist is not None:
             if watchlist not in available_watchlists:
                 raise ValueError(
                     f"Watchlist must be one of these options -> {available_watchlists}, you chose: '{watchlist}'")
@@ -613,8 +635,8 @@ class ProntoPlatformAPI:
         allEventTypes.sort()
         return allEventTypes
 
-    def run_topic_research(self, corpus, nResults=1_000, eventType=None, freeText=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None) -> List:
-        search_type, doc_type, start_date, end_date, resFilters = self.checkRequest(corpus, sector, watchlist, doc_type, start_date, end_date)
+    def run_topic_research(self, corpus, nResults=1_000, companies=None, country = None, sentiment = None, eventType=None, freeText=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None) -> List:
+        search_type, doc_type, start_date, end_date, resFilters = self.checkRequest(corpus, companies, sector, watchlist, doc_type, start_date, end_date)
         size = 1_000
         platform_corpus_name = self._platform_corpus_map[corpus]
         doc_type = doc_type['label']
@@ -628,6 +650,12 @@ class ProntoPlatformAPI:
             "corpus": platform_corpus_name,
             "searchEventTextQuery": ""
         }
+
+        if sentiment:
+            request_obj['patternSentiment'] = [sentiment]
+
+        if country:
+            request_obj['hqCountries'] = [country]
 
         # if researchName:
         #     request_obj['researchName'] = researchName
@@ -646,14 +674,16 @@ class ProntoPlatformAPI:
             else:
                 raise ValueError(f"eventType must be one of these options -> {avail_topics}")
 
-
-        if search_type == 'sector':
+        if search_type == 'company':
+            request_obj['companiesIds'] = companies
+            request_obj['retrieveType'] = 'company'
+        elif search_type == 'sector':
             subSector = []
             request_obj['sectors'] = [sector]
             for subsector in resFilters['sectors'][sector]:
                 subSector.append(subsector)
             request_obj['subSectors'] = subSector
-        elif watchlist:
+        elif search_type == 'watchlist':
             request_obj['watchlist'] = resFilters['watchLists'][watchlist]
         else:
             raise NotImplementedError
@@ -662,10 +692,10 @@ class ProntoPlatformAPI:
 
         return results
 
-    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None, similarity_threshold=.50) -> Dict:
+    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None,sentiment=None, companies =None,country = None,  doc_type=None, start_date=None, end_date=None, similarity_threshold=.50) -> Dict:
         if not searchQ:
             raise ValueError("'searchQ' must be specified")
-        search_type, doc_type, start_date, end_date, resFilters = self.checkRequest(corpus, sector, watchlist, doc_type, start_date, end_date)
+        search_type, doc_type, start_date, end_date, resFilters = self.checkRequest(corpus,companies,  sector, watchlist, doc_type, start_date, end_date)
 
         request_obj = {
             'dateRange': {'gte': start_date, 'lte': end_date},
@@ -675,6 +705,12 @@ class ProntoPlatformAPI:
             'size': 6_000,
             'returnPineconeResults': True,
         }
+
+        if sentiment:
+            request_obj['sentiment'] = sentiment
+
+        if country:
+            request_obj['country'] = country
 
         if search_type == 'sector':
             print('Running Sector based Query')
@@ -695,13 +731,29 @@ class ProntoPlatformAPI:
             task = (watchlist, request_obj, similarity_threshold)
             results = [self.process_subQ(task)]
 
+        elif search_type == 'company':
+            request_obj['focusOnValues'] = []
+            for company in companies:
+                compObj={'key': '', 'value': [company]}
+                request_obj['focusOnValues'].append(compObj)
+            request_obj['focusOn'] = 'companies'
+            task = ('companies', request_obj, similarity_threshold)
+            results = [self.process_subQ(task)]
+            # request_obj['retrieveType'] = 'company'
+
         else:
             raise NotImplementedError
 
         # Combine results into a single dictionary
         datas = defaultdict(list)
         for qname, recs in results:
-            datas[qname].extend(recs)
+            if search_type == 'company':
+                for rec in recs:
+                    company_id = rec['documentMeta']['companyId']
+                    # Add each record to the list of the corresponding companyId
+                    datas[company_id].append(rec)
+            else:
+                datas[qname].extend(recs)
         return dict(datas)
 
     def _validate_doc_model(self, doc_model):
