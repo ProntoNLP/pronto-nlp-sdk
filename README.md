@@ -101,7 +101,7 @@ The analyzer functions also accept a 'keep_results' parameter (default: True), w
 
 All results will be written or returned as they become available.
 
-Currently, the SDK supports '.txt' and string inputs only.
+Currently, the SDK supports '.txt', '.pdf', and string inputs.
 
 The models can be any of your FIEF models (see below) or one of ProntoNLP's LLMs.
 
@@ -118,7 +118,7 @@ async def process_documents():
 
     # Define the document models to be processed
     doc_models = [{"name": "brokerReport.txt", "onModel": "LLMAlpha"}, 
-                  {"name": "earningReport.txt", "onModel": "LLMAlpha"}, 
+                  {"name": "earningReport.pdf", "onModel": "LLMAlpha"}, 
                   {"name": "earningReport.txt", "onModel": "Alpha"}]
 
     # Analyze documents and optionally save the results to a specified directory
