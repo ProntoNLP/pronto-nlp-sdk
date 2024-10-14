@@ -3,6 +3,7 @@ Below is a simple example of how to ingest and process Signal Updates from the S
 
 Please fill the following parameters:
 KEY_PATH --> path to your SFTP key
+USER_NAME --> user name for SFTP
 TEMP_TABLE --> name of a temporary table in your database
 TABLE --> name of the final signal scores table in your database
 LAST_LOADED_TABLE --> name of tracking table in your database
