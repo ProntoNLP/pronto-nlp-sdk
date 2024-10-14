@@ -168,6 +168,9 @@ Input parameters include:
 - searchQ: keyword / phrase to search (required)
 - sector: a sector to search over (sector or watchlist must be specified)
 - watchlist: a watchlist created by the user on the platform (sector or watchlist must be specified)
+- sentiment: search for a specific sentiment ('positive', 'negative', 'neutral')
+- companies: search by companies using a list of companyIds
+- country: search by country of company HQ
 - doc_type: a document type from the corpus to search over (default: 'transcripts'='Earnings Calls', 'sec'='10-Q', 'nonsec'='QR')
 - start_date: start date (YYYY-MM-DD) for document search (default=current_date - 90 days)
 - end_date: end date (YYYY-MM-DD) for document search (default=current_date)
@@ -175,9 +178,27 @@ Input parameters include:
 
 ```python
 srch_res = pronto.run_smart_search(corpus='sec', sector='Industrials', searchQ='AI')
+
+srch_res = pronto.run_smart_search(corpus='transcripts', sector='Financials', searchQ='AI', country='United States', sentiment='positive', start_date='2024-01-01')
+
+srch_res = pronto.run_smart_search(corpus='transcripts', companies=['32307', '21835', '29096', '18749'], searchQ='inventory')
 ```
 
-Results are returned as a dictionary, with each subsector as a key and the list of results as the corresponding value.
+In order to identify which companyIds to enter, users can search by company name or company ticker symbol:
+```python
+companyIdList = pronto.getCompanyId(companyName='tes')
+pprint(companyIdList)
+[{'id': '224263', 'name': 'Tesco Corporation (TESO)', 'ticker': 'TESO'},
+ {'id': '106485352', 'name': 'Tesaro, Inc. (TSRO)', 'ticker': 'TSRO'},
+ {'id': '552028024', 'name': 'Tesoro Gold Ltd (TSO)', 'ticker': 'TSO'},
+ {'id': '94354', 'name': 'TESSCO Technologies Incorporated (TESS)', 'ticker': 'TESS'},
+ {'id': '4493024', 'name': 'Tesson Holdings Limited (1201)', 'ticker': '1201'},
+ {'id': '29053039', 'name': 'Tesla Energy Operations, Inc. (SCTY)', 'ticker': 'SCTY'},
+ {'id': '27444752', 'name': 'Tesla, Inc. (TSLA)', 'ticker': 'TSLA'}]
+```
+
+
+Search results are returned as a dictionary, with each subsector/company as a key and the list of results as the corresponding value.
 For more results, users can adjust the similarity threshold and/or limit the timeframe by using start and end dates.
 Note that lowering the similarity threshold will return a wider variety of results.
 
@@ -206,6 +227,9 @@ Users can run the analysis using the 'run_topic_research' function.
 Input parameters include:
 - corpus: ['transcripts', 'sec', 'nonsec'] (required)
 - nResults: number of results to return (default=1,000)
+- companies: search by companies using a list of companyIds
+- country: search by country of company HQ
+- sentiment: search for a specific sentiment ('positive', 'negative', 'neutral')
 - eventType: name of eventtype / topic to search (default is all topics)
 - freeText: keyword term to search, can be used in conjunction with eventType or separately (default is None)
 - sector: a sector to search over (sector or watchlist must be specified)
