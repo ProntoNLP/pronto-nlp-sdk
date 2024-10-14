@@ -7,6 +7,7 @@ USER_NAME --> user name for SFTP
 TEMP_TABLE --> name of a temporary table in your database
 TABLE --> name of the final signal scores table in your database
 LAST_LOADED_TABLE --> name of tracking table in your database
+columns_to_keep --> please adjust it to the columns you want to save
 
 Also, implement the following as needed for your database operations
 
