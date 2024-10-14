@@ -635,7 +635,7 @@ class ProntoPlatformAPI:
         allEventTypes.sort()
         return allEventTypes
 
-    def run_topic_research(self, corpus, nResults=1_000, companies=None, country = None, sentiment = None, eventType=None, freeText=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None) -> List:
+    def run_topic_research(self, corpus, nResults=1_000, companies=None, country=None, sentiment=None, eventType=None, freeText=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None) -> List:
         search_type, doc_type, start_date, end_date, resFilters = self.checkRequest(corpus, companies, sector, watchlist, doc_type, start_date, end_date)
         size = 1_000
         platform_corpus_name = self._platform_corpus_map[corpus]
@@ -692,7 +692,7 @@ class ProntoPlatformAPI:
 
         return results
 
-    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None,sentiment=None, companies =None,country = None,  doc_type=None, start_date=None, end_date=None, similarity_threshold=.50) -> Dict:
+    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None, sentiment=None, companies=None, country=None, doc_type=None, start_date=None, end_date=None, similarity_threshold=.50) -> Dict:
         if not searchQ:
             raise ValueError("'searchQ' must be specified")
         search_type, doc_type, start_date, end_date, resFilters = self.checkRequest(corpus,companies,  sector, watchlist, doc_type, start_date, end_date)
