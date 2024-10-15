@@ -160,7 +160,7 @@ def main():
                 insertQuery = f"insert into {LAST_LOADED_TABLE} VALUES ('{file}')"
                 ph.updateTableInDb(insertQuery)
             else:
-                break  # Stop processing if the file is older than the last loaded file
+                continue  # Stop processing if the file is older than the last loaded file
 
 
 
