@@ -6,6 +6,8 @@ import requests
 import math
 from collections import defaultdict
 from itertools import takewhile
+
+from anyio import sleep
 from tqdm import tqdm
 from multiprocessing import Pool
 import re
@@ -22,7 +24,7 @@ import aiofiles
 
 
 def SignIn(user, password):
-    organization = "dev"
+    organization = "prod"
     M = re.match(r'^(.*?):(.*)$', user)
     if M:
         organization = M.group(1)
@@ -143,6 +145,8 @@ class ProntoWebSocketClient:
             await self.connect()
 
     async def listen(self):
+        retry_count = 0
+        max_retries = 15
         while self.running:
             try:
                 if self.websocket is None or self.websocket.closed:
@@ -158,6 +162,14 @@ class ProntoWebSocketClient:
             except ConnectionClosedOK:
                 print("Connection closed normally")
                 self.running = False
+            except json.JSONDecodeError as e:
+                # Handle JSON parsing errors, wait, and retry
+                retry_count += 1
+                if retry_count < max_retries:
+                    print(f"Retry {retry_count}: The document is not converted yet. Retrying in 5 seconds...")
+                    await asyncio.sleep(5)
+                else:
+                    raise Exception("Maximum retry attempts reached. Exiting.") from e
             except Exception as e:
                 print(f"An error occurred: {e}")
                 await asyncio.sleep(self.reconnect_interval)
@@ -273,6 +285,7 @@ class ProntoPlatformAPI:
             requestResult = PerformRequest(self._base_headers, self._URL_Convert_Pdf_to_Text,
                                            request_obj={'fileKey': key},
                                            method='POST')
+            await asyncio.sleep(10)
             return requestResult
         except Exception as e:
             print(f'Error occured: {e}')
@@ -935,6 +948,8 @@ class ProntoPlatformAPI:
         cntr = 0
 
         async with aiohttp.ClientSession() as session:
+            retry_count = 0
+            max_retries = 10
             while cntr < 120:
                 try:
                     async with session.post(self._URL_Platform_Doc_Analyze, json=doc_req, headers=headers) as response:
@@ -946,8 +961,17 @@ class ProntoPlatformAPI:
                             print(f"Analysis request failed, retrying in 5 seconds...")
                             cntr += 1
                             await asyncio.sleep(5)
+                except json.JSONDecodeError as e:
+                    # Handle JSON parsing errors, wait, and retry
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        print(f"Retry {retry_count}: JSON parsing error: {e}. Retrying in 5 seconds...")
+                        await asyncio.sleep(5)
+                    else:
+                        raise Exception("Maximum retry attempts reached. Exiting.") from e
                 except Exception as e:
                     print(f"An error occurred: {e}")
+                    print(f'tesinting catching error')
                     cntr += 1
                     await asyncio.sleep(5)
 
