@@ -3,9 +3,11 @@ Below is a simple example of how to ingest and process Signal Updates from the S
 
 Please fill the following parameters:
 KEY_PATH --> path to your SFTP key
+USER_NAME --> user name for SFTP
 TEMP_TABLE --> name of a temporary table in your database
 TABLE --> name of the final signal scores table in your database
 LAST_LOADED_TABLE --> name of tracking table in your database
+columns_to_keep --> please adjust it to the columns you want to save
 
 Also, implement the following as needed for your database operations
 
@@ -158,7 +160,7 @@ def main():
                 insertQuery = f"insert into {LAST_LOADED_TABLE} VALUES ('{file}')"
                 ph.updateTableInDb(insertQuery)
             else:
-                break  # Stop processing if the file is older than the last loaded file
+                continue  # Stop processing if the file is older than the last loaded file
 
 
 
