@@ -6,8 +6,6 @@ import requests
 import math
 from collections import defaultdict
 from itertools import takewhile
-
-from anyio import sleep
 from tqdm import tqdm
 from multiprocessing import Pool
 import re
