@@ -9,7 +9,7 @@ setup(
         'gevent',
         'websocket-client',
         'requests',
-        'websockets',
+        'websockets<14',
         'asyncio',
         'aiohttp',
         'aiofiles',
