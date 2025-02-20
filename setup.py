@@ -2,14 +2,14 @@ from setuptools import setup, find_packages
 
 setup(
     name='pronto_nlp',
-    version='0.4.5',
+    version='0.4.6',
     packages=find_packages(),
     install_requires=[
         'boto3',
         'gevent',
         'websocket-client',
         'requests',
-        'websockets',
+        'websockets<14',
         'asyncio',
         'aiohttp',
         'aiofiles',

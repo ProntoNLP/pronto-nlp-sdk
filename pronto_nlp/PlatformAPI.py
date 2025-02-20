@@ -125,7 +125,7 @@ def _is_valid_date_format(date_string):
 
 
 class ProntoWebSocketClient:
-    def __init__(self, base_uri, authToken, result_callback, reconnect_interval=5):
+    def __init__(self, base_uri, authToken, result_callback, reconnect_interval=3):
         self.base_uri = base_uri
         self.authToken = quote(authToken)
         self.uri = f"{self.base_uri}?token={self.authToken}"
@@ -135,12 +135,18 @@ class ProntoWebSocketClient:
         self.running = True
 
     async def connect(self):
-        try:
-            self.websocket = await websockets.connect(self.uri)
-        except Exception as e:
-            print(f"Failed to connect: {e}")
-            await asyncio.sleep(self.reconnect_interval)
-            await self.connect()
+        while True:
+            try:
+                self.websocket = await websockets.connect(
+                    self.uri,
+                    ping_interval=5,
+                    ping_timeout=60
+                )
+                print("Connected to the websocket.")
+                break  # Exit the loop once connected
+            except Exception as e:
+                print(f"Failed to connect: {e}. Retrying in {self.reconnect_interval} seconds...")
+                await asyncio.sleep(self.reconnect_interval)
 
     async def listen(self):
         retry_count = 0
@@ -148,6 +154,7 @@ class ProntoWebSocketClient:
         while self.running:
             try:
                 if self.websocket is None or self.websocket.closed:
+                    print("Websocket connection lost. Attempting to reconnect...")
                     await self.connect()
                 message = await self.websocket.recv()
                 result = await self.process_message(message)
@@ -158,25 +165,24 @@ class ProntoWebSocketClient:
                 self.websocket = None
                 await asyncio.sleep(self.reconnect_interval)
             except ConnectionClosedOK:
-                print("Connection closed normally")
+                print("Connection closed normally by the server.")
                 self.running = False
             except json.JSONDecodeError as e:
-                # Handle JSON parsing errors, wait, and retry
                 retry_count += 1
+                print(f"JSON decode error: {e}. Retry {retry_count}/{max_retries}.")
                 if retry_count < max_retries:
-                    print(f"Retry {retry_count}: The document is not converted yet. Retrying in 5 seconds...")
                     await asyncio.sleep(5)
                 else:
                     raise Exception("Maximum retry attempts reached. Exiting.") from e
             except Exception as e:
-                print(f"An error occurred: {e}")
+                print(f"An unexpected error occurred: {e}")
                 await asyncio.sleep(self.reconnect_interval)
 
     async def process_message(self, message):
         try:
             data = json.loads(message)
             if not data.get('completed', False):
-                print(f"An error occurred when retrieving results for fileKey: {data['fileKey']}")
+                print(f"Incomplete result for fileKey: {data.get('fileKey')}.")
                 return None
             data['status'] = 'Completed'
             processed_result = await self.result_callback(data)
@@ -190,17 +196,7 @@ class ProntoWebSocketClient:
         self.running = False
         if self.websocket and not self.websocket.closed:
             await self.websocket.close()
-
-
-async def analyze_docs_websocket(base_uri, authToken, result_callback, expected_results):
-    res_cntr = 0
-    client = ProntoWebSocketClient(base_uri, authToken, result_callback)
-    async for result in client.listen():
-        yield result
-        res_cntr += 1
-        if res_cntr >= expected_results:
-            break
-    await client.websocket.close()
+            print("Websocket connection closed.")
 
 
 class ProntoPlatformAPI:
@@ -959,17 +955,18 @@ class ProntoPlatformAPI:
                             print(f"Analysis request failed, retrying in 5 seconds...")
                             cntr += 1
                             await asyncio.sleep(5)
+
                 except json.JSONDecodeError as e:
                     # Handle JSON parsing errors, wait, and retry
                     retry_count += 1
                     if retry_count < max_retries:
-                        print(f"Retry {retry_count}: JSON parsing error: {e}. Retrying in 5 seconds...")
+                        # print(f"Retry {retry_count}: JSON parsing error: {e}. Retrying in 5 seconds...")
                         await asyncio.sleep(5)
                     else:
                         raise Exception("Maximum retry attempts reached. Exiting.") from e
+
                 except Exception as e:
                     print(f"An error occurred: {e}")
-                    print(f'tesinting catching error')
                     cntr += 1
                     await asyncio.sleep(5)
 
@@ -996,12 +993,56 @@ class ProntoPlatformAPI:
         doc_results = {"doc_meta": docmeta, "doc_analytics": doc_analytics}
         return doc_results
 
-    async def analyze_docs(self, doc_models: List[dict], out_dir: str = None, keep_results: bool = True) -> AsyncGenerator[Dict, None]:
+    async def _process_websocket_result(self, raw_result: dict, out_dir: str = None):
+        try:
+            # The same formatting logic you used before
+            docmeta = self._request_meta_map.get(
+                f"{raw_result['doc_meta']['runId']}{raw_result['doc_meta']['fileKey']}", {}
+            )
+            raw_result['doc_meta'] = {**docmeta, **raw_result['doc_meta']}
+
+            if raw_result['doc_meta'].get('isLLM'):
+                raw_result['doc_meta']['onModel'] = f"LLM{raw_result['doc_meta']['onModel']}"
+
+            dlscore_counts, event_sentiment_counts, importance_sentiment_counts = self._count_event_sentiments(
+                raw_result['doc_analytics'],
+                isLLM=raw_result['doc_meta']['isLLM']
+            )
+            raw_result['doc_meta']['sentiment'] = event_sentiment_counts
+            raw_result['doc_meta']['DLSentiment'] = dlscore_counts
+            raw_result['doc_meta']['importanceSentiment'] = importance_sentiment_counts
+
+            # Optionally save to out_dir
+            if out_dir:
+                await self._save_result_to_json_async(raw_result, out_dir)
+                return raw_result['doc_meta']
+            else:
+                # If not saving, just return the full result
+                return raw_result
+
+        except Exception as e:
+            print(f"Error processing websocket result: {e}")
+            # You could return None or re-raise
+            return None
+
+    async def analyze_docs(self, doc_models: List[dict], out_dir: str = None, keep_results: bool = True) -> AsyncGenerator[dict, None]:
+        """
+        1. Upload docs
+        2. Open WebSocket
+        3. Start analysis tasks in parallel
+        4. Read + yield WebSocket results as they arrive
+        5. Don't exit until we've received all results or the analysis tasks complete
+        6. Optionally clean up
+        """
+
+        # Set up
         if out_dir and not os.path.exists(out_dir):
             os.makedirs(out_dir)
 
+        # ---------------------------
+        # 1. Upload the Documents
+        # ---------------------------
         doc_model_reqs = []
-        # pdfDocs = []
         for d_m in doc_models:
             chk, reason = self._validate_doc_model(d_m)
             if not chk:
@@ -1010,56 +1051,95 @@ class ProntoPlatformAPI:
                 doc_model_reqs.append(d_m)
 
         if not doc_model_reqs:
-            print(f"No valid document-model requests found")
+            print("No valid document-model requests found")
             sys.exit()
 
         print(f"Uploading {len(doc_model_reqs)} documents")
-        upload_tasks = [self._upload_doc_to_platform(d_m) for d_m in doc_model_reqs]
-        await asyncio.gather(*upload_tasks)  # Upload documents concurrently
+        upload_tasks = [self._upload_doc_to_platform(d) for d in doc_model_reqs]
+        await asyncio.gather(*upload_tasks)
         print("All documents uploaded successfully.")
 
-        # Setup and start the WebSocket connection first
-        websocket_coro = analyze_docs_websocket(self._URL_Doc_Results_WebSocket, self._authToken, self._get_doc_analytics_async, len(self._request_meta_map))
+        # Build a map (or re-build) if needed
+        num_docs = len(doc_model_reqs)
+        print(f"Expecting results for {num_docs} documents.")
 
-        # Give the WebSocket a moment to establish connection
-        await asyncio.sleep(1)
+        # ----------------------------
+        # 2. Open WebSocket Connection
+        # ----------------------------
+        client = ProntoWebSocketClient(
+            base_uri=self._URL_Doc_Results_WebSocket,
+            authToken=self._authToken,
+            result_callback=self._get_doc_analytics_async
+        )
+        await client.connect()
+        print("WebSocket connection established.")
 
-        # Initiate analysis on the uploaded documents
-        analysis_tasks = [self._call_platform_analyzer(doc) for doc in self._request_meta_map.values()]
-        await asyncio.gather(*analysis_tasks)  # Start analysis concurrently
+        # ----------------------------
+        # 3. Start Analysis in Parallel
+        # ----------------------------
+        # We'll launch the analysis tasks in the background...
+        analysis_tasks = [
+            asyncio.create_task(self._call_platform_analyzer(doc_meta))
+            for doc_meta in self._request_meta_map.values()
+        ]
+        # ... but we do *not* await them *immediately*, so the code below can run concurrently
         print("Document analysis initiated for all documents.")
 
-        # Process results from the WebSocket as they come in
-        async for result in websocket_coro:
+        # -----------------------------
+        # 4. Read + Yield WS Results
+        # -----------------------------
+        web_socket_results = 0
+
+        # Create a single gather for your analysis tasks so we can check it later
+        analysis_future = asyncio.gather(*analysis_tasks)
+
+        try:
+            # We'll read messages until the server stops or we've seen enough
+            async for raw_result in client.listen():
+                web_socket_results += 1
+                print(f"Received result #{web_socket_results} from WebSocket.")
+
+                try:
+                    # Process the result
+                    processed = await self._process_websocket_result(
+                        raw_result, out_dir
+                    )
+                    yield processed  # This is how we return data to the caller
+
+                except Exception as e:
+                    print(f"Error processing a WebSocket result: {e}")
+                    continue
+
+                # If we know exactly how many results we expect, we can stop early:
+                if web_socket_results >= num_docs:
+                    print("Received all expected results. Stopping WebSocket read.")
+                    break
+
+        finally:
+            # -----------------------------
+            # 5. Wrap Up: Wait for Analysis
+            # -----------------------------
+            # Make sure analysis tasks are done
             try:
-                # format results
-                docmeta = _safe_get(self._request_meta_map, f"{result['doc_meta']['runId']}{result['doc_meta']['fileKey']}", default=dict())
-                result['doc_meta'] = {**docmeta, **result['doc_meta']}
-                if result['doc_meta']['isLLM']:
-                    result['doc_meta']['onModel'] = f"LLM{result['doc_meta']['onModel']}"
-
-                dlscore_counts, event_sentiment_counts, importance_sentiment_counts = self._count_event_sentiments(result['doc_analytics'], isLLM=result['doc_meta']['isLLM'])
-                result['doc_meta']['sentiment'] = event_sentiment_counts
-                result['doc_meta']['DLSentiment'] = dlscore_counts
-                result['doc_meta']['importanceSentiment'] = importance_sentiment_counts
-
-                if out_dir:
-                    # Save results asynchronously to the specified output directory
-                    await self._save_result_to_json_async(result, out_dir)
-                    yield result['doc_meta']
-                else:
-                    # Yield the result if no output directory is provided
-                    yield result
+                await analysis_future
             except Exception as e:
-                print(f"Error while analyzing document: {e}")
-                continue
+                print(f"Error from analysis tasks: {e}")
+                # We can either re-raise or just log it
 
-        print("Analyzer completed")
+            # Close the WebSocket
+            await client.close()
+            print("WebSocket closed.")
+
+        # -----------------------------
+        # 6. Cleanup
+        # -----------------------------
         if not keep_results:
-            # delete documents
+            # e.g., self.delete_docs() ...
             for k, doc_meta in self._request_meta_map.items():
                 self.delete_doc(doc_meta)
-        self._request_meta_map = dict()  # Clear the map after processing is complete
+
+        self._request_meta_map.clear()
+        print("Analyzer completed.")
 
     async def analyze_text(self, text: Union[str, List[str]], model: str, out_dir: str = None, keep_results: bool = True) -> AsyncGenerator[Dict, None]:
         if isinstance(text, str):
