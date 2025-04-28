@@ -27,8 +27,8 @@ def SignIn(user, password):
     if M:
         organization = M.group(1)
         user = M.group(2)
-    authURL = ("https://server-staging.prontonlp.com/token" if (organization == "dev" or organization == "staging") else
-               "https://server-prod.prontonlp.com/token")
+    authURL = ("https://server-staging.prontonlp.com/api/token" if (organization == "dev" or organization == "staging") else
+               "https://server-prod.prontonlp.com/api/token")
 
     requestObj = {"email": user, "password": password, "organization": organization}
     body = json.dumps(requestObj, ensure_ascii=True).encode('ascii')
@@ -68,9 +68,10 @@ def PerformRequest(headers, url, request_obj=None, method='POST', check_response
 
         if response.status_code != 200:
             print(f"Request Failed. Status code: {response.status_code}, Response: {response.text}")
+            raise ValueError(f"Request Failed. Status code: {response.status_code}, Response: {response.text}")
 
     try:
-        if url == 'https://server-prod.prontonlp.com/reflect/convert':
+        if url.endswith('reflect/convert'):
             return response
         return response.json()
     except json.JSONDecodeError as e:
@@ -202,29 +203,34 @@ class ProntoWebSocketClient:
 class ProntoPlatformAPI:
     def __init__(self, user, password):
         self._request_meta_map = dict()
-        self._URL_Platform_Doc_Upload = "https://server-prod.prontonlp.com/reflect/documents"
-        self._URL_Platform_Doc_Analyze = "https://server-prod.prontonlp.com/reflect/analyze-document"
-        self._URL_Platform_Doc_Results = "https://server-prod.prontonlp.com/reflect/results"
+        self._URL_api_base = "https://server-prod.prontonlp.com/api"
+        self._URL_Platform_Doc_Upload = f"{self._URL_api_base}/reflect/documents"
+        self._URL_Platform_Doc_Analyze = f"{self._URL_api_base}/reflect/analyze-document"
+        self._URL_Platform_Doc_Results = f"{self._URL_api_base}/reflect/results"
         self._URL_Doc_Results_WebSocket = "wss://socket-prod.prontonlp.com/"
 
-        self._URL_Platform_Vector_Search = "https://server-prod.prontonlp.com/get-vector-search-results"
-        self._URL_Platform_Result_Filters = "https://server-prod.prontonlp.com/get-filters"
-        self._URL_Platform_Result_Datas = "https://server-prod.prontonlp.com/get-sentences"
+        self._URL_Platform_Vector_Search = f"{self._URL_api_base}/get-vector-search-results"
+        self._URL_Platform_Result_Filters = f"{self._URL_api_base}/get-filters"
+        self._URL_Platform_Result_Datas = f"{self._URL_api_base}/get-sentences"
+        self._URL_Platform_Result_Context = f"{self._URL_api_base}/research/get-sentences-context"
 
-        self._URL_Platform_Watchlist = "https://server-prod.prontonlp.com/watchlists"
-        self._URL_Get_Models_Events = "https://server-prod.prontonlp.com/models/get-models-events"
-        self._URL_Get_Fief_Event_Rules = "https://server-prod.prontonlp.com/event-rules"
-        self._URL_Create_Fief_Model = "https://server-prod.prontonlp.com/save-user-model"
-        self._URL_Delete_Fief_Model = "https://server-prod.prontonlp.com/delete-user-model"
-        self._URL_Create_Fief_Event = "https://server-prod.prontonlp.com/save-user-event"
-        self._URL_Delete_Fief_Event = "https://server-prod.prontonlp.com/delete-user-event"
+        self._URL_Platform_Watchlist = f"{self._URL_api_base}/watchlists"
+        self._URL_Get_Models_Events = f"{self._URL_api_base}/models/get-models-events"
+
+        self._URL_Get_Fief_Event_Rules = f"{self._URL_api_base}/models/event-rules"
+        self._URL_Create_Fief_Model = f"{self._URL_api_base}/models/save-user-model"
+        self._URL_Delete_Fief_Model = f"{self._URL_api_base}/models/delete-user-model"
+        self._URL_Create_Fief_Event = f"{self._URL_api_base}/models/save-user-event"
+        self._URL_Delete_Fief_Event = f"{self._URL_api_base}/models/delete-user-event"
         self._URL_Create_Fief_Pattern = ""
-        self._URL_Delete_Fief_Pattern = "https://server-prod.prontonlp.com/delete-user-pattern"
-        self._URL_Get_Meta_Data = "https://server-prod.prontonlp.com/get-metadata-results"
+        self._URL_Delete_Fief_Pattern = f"{self._URL_api_base}/models/delete-user-pattern"
 
-        self._URL_Paltform_Topic_Research_Results = "https://server-prod.prontonlp.com/researches/topic"
-        self._URL_Paltform_Topic_Research = "https://server-prod.prontonlp.com/get-research-results"
-        self._URL_Convert_Pdf_to_Text = "https://server-prod.prontonlp.com/reflect/convert"
+        self._URL_Get_Meta_Data = f"{self._URL_api_base}/get-metadata-results"
+
+        self._URL_Paltform_Topic_Research_Results = f"{self._URL_api_base}/research/researches/topic"
+        self._URL_Paltform_Topic_Research = f"{self._URL_api_base}/research/get-research-results"
+
+        self._URL_Convert_Pdf_to_Text = f"{self._URL_api_base}/reflect/convert"
         self._platform_corpus_map = {'transcripts': 'S&P Transcripts', 'sec': 'SEC Filings',
                                      'nonsec': 'Non-SEC Filings'}
         self._user, self._password = user, password
@@ -413,7 +419,7 @@ class ProntoPlatformAPI:
         return doc_results
 
     @staticmethod
-    def aggregate_filter_records(records):
+    def _aggregate_filter_records(records):
         if 'groupKey' in records[0]:  # Check if the first record contains 'groupKey'
             aggregated = defaultdict(list)
             for record in records:
@@ -422,346 +428,6 @@ class ProntoPlatformAPI:
         else:
             # If no groupKey is present, just return the labels as a list
             return {'marketCaps': [record['label'] for record in records]}
-
-    def get_smart_search_filters(self, corpus):
-        corpus = corpus.lower()
-        if corpus not in ('transcripts', 'sec', 'nonsec'):
-            raise ValueError(f"Corpus must be one of these options -> ['transcripts', 'sec', 'nonsec'], you chose: '{corpus}'")
-        platform_corpus_name = self._platform_corpus_map[corpus]
-        resFilters =  PerformRequest(self._base_headers, self._URL_Platform_Result_Filters,  request_obj={'corpus': platform_corpus_name}, method='POST')['data']
-
-        doctype_filters = self.aggregate_filter_records(resFilters['documentTypes'])
-        sector_filters = self.aggregate_filter_records(resFilters['subSectors'])
-        # marketcap_filters = self.aggregate_filter_records(resFilters['marketCaps'])
-
-        # get watchlist filters
-        watchlist_filters = self.get_watchlists()
-
-        return {'docTypes': doctype_filters, 'sectors': sector_filters, 'watchLists': watchlist_filters} #, 'marketCaps': marketcap_filters}
-
-    def get_watchlists(self):
-        watchlist_filters = {}
-        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Watchlist, method='GET').get('data', None)
-        if requestResult:
-            watchlist_filters = defaultdict(list)
-            for rec in requestResult:
-                watchlist_filters[rec['watchlistName']].extend(rec['companies'])
-        return dict(watchlist_filters)
-
-    def get_smart_search_full_results(self, sent_id_recs, similarity_threshold):
-        # if sent_id_recs:
-        # filter sent_ids by threshold
-        sent_ids_fltrd = [r for r in takewhile(lambda x: x['score'] >= similarity_threshold, sent_id_recs)]
-        sent_ids_dict = {record['id']: record['score'] for record in sent_ids_fltrd}
-        exclude_fields = ['keywordsPositions', 'events', 'DLSentiment', 'speakerNameId', 'speakerCompanyId']
-
-        full_results = []
-        for sent_id_chunk in _chunk_list(sent_ids_fltrd, 100):
-            sent_ids = [x['id'] for x in sent_id_chunk]
-            request_obj = {'sentencesIds': sent_ids, 'excludes': exclude_fields}
-            requestResult = PerformRequest(self._base_headers, self._URL_Platform_Result_Datas, request_obj=request_obj, method='POST')
-            if requestResult.get('data', None):
-                res = [{**record['_source'], '_id': record['_id'], 'similarity_score': sent_ids_dict[record['_id']]} for record in requestResult['data']['sentences']]
-                full_results.append(res)
-
-        full_results[:] = [item for sublist in full_results for item in sublist]
-        full_results.sort(key=lambda x: x['similarity_score'], reverse=True)
-
-        return full_results
-
-    def get_topic_research_full_results(self, sent_id_recs):
-        transformed_data = []
-
-        # Check if sent_id_recs is a list with a single item
-        if isinstance(sent_id_recs, list) and len(sent_id_recs) == 1:
-            sent_id_recs = sent_id_recs[0]
-
-        # Ensure we're working with the "data" key
-        data_to_process = sent_id_recs.get("data", sent_id_recs)
-
-        # If data_to_process is still a list with one item, unpack it
-        if isinstance(data_to_process, list) and len(data_to_process) == 1:
-            data_to_process = data_to_process[0]
-
-        # Loop over each element in the "data" list
-        for element in sent_id_recs["data"]:
-            # Extract necessary values for the transformation
-            document_meta = element.get("documentMeta", {})
-            event_data = element.get("event", {})
-            slots_filter = element.get("slotsFilter", {})
-            tags = element.get("tags", [])
-
-            # Create the transformed element
-            transformed_element = {
-                "DLSentiment": element.get("DLSentiment", ""),
-                "importance": slots_filter.get("importance", ""),
-                "aspect": slots_filter.get("aspect", ""),
-                "comment": slots_filter.get("comment", ""),
-                "documentMeta": {
-                    "date": document_meta.get("date", ""),
-                    "country": document_meta.get("country", ""),
-                    "ticker": document_meta.get("ticker", ""),
-                    "documentType": document_meta.get("documentType", ""),
-                    "companyName": document_meta.get("companyName", ""),
-                    "corpus": document_meta.get("corpus", ""),
-                    "title": document_meta.get("title", ""),
-                    "hqCountry": document_meta.get("hqCountry", ""),
-                    "subSector": document_meta.get("subSector", ""),
-                    "companyId": document_meta.get("companyId", ""),
-                    "transcriptId": document_meta.get("transcriptId", ""),
-                    "exchange": document_meta.get("exchange", ""),
-                    "sector": document_meta.get("sector", ""),
-                    "day": document_meta.get("day", ""),
-                    "marketCap": document_meta.get("marketCap", 0)
-                },
-                "tags": tags,
-                "sentenceIndex": element.get("sentenceIndex", 0),
-                "paragraphIndex": element.get("paragraphIndex", 0),
-                "model": element.get("model", ""),
-                "text": element.get("text", ""),
-                "EventType": event_data.get("EventType", ""),
-                "EventText": event_data.get("EventText", ""),
-                "Polarity": event_data.get("Polarity", ""),
-                "llmTag": element.get("llmTag", "")
-            }
-
-            # Append the transformed element to the results list
-            transformed_data.append(transformed_element)
-
-        return transformed_data
-
-    def process_subQ(self, args):
-        q_name, request_obj, similarity_threshold = args
-        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Vector_Search, request_obj=request_obj, method='POST')
-        recs = self.get_smart_search_full_results(requestResult.get('data',[]), similarity_threshold)
-        return q_name, recs
-
-    def process_research_topicQ(self, request_obj, nResults):
-        size = 1_000
-        requestResultList = []
-
-        if isinstance(nResults, str):
-            if nResults == 'all':
-                nResults = 10_000
-            else:
-                raise ValueError(f"Parameter 'nResults' must be 'all' or an integer, got {nResults}")
-
-        if nResults <= size:
-            size = nResults
-            request_obj['size'] = size
-            requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
-                                           request_obj=request_obj,
-                                           method='POST')
-            if requestResult:
-                recs = self.get_topic_research_full_results(requestResult['data'])
-                requestResultList.extend(recs)
-        else:
-            numLoops = math.ceil(nResults / size)
-            for i in range(numLoops):
-                request_obj['from'] = i * size
-                size = min(nResults - i*size, size)
-                request_obj['size'] = size
-                requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
-                                               request_obj=request_obj,
-                                               method='POST')
-                if requestResult:
-                    recs = self.get_topic_research_full_results(requestResult['data'])
-                    requestResultList.extend(recs)
-
-        # request_obj['size'] = size
-        return requestResultList
-
-    def checkRequest(self, corpus, companies=None ,sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None):
-        if not corpus:
-            raise ValueError("'corpus' must be specified")
-
-        search_type = None
-        resFilters = self.get_smart_search_filters(corpus)
-        available_doctypes = list(resFilters['docTypes'].values())[0]
-        available_sectors = list(resFilters['sectors'].keys())
-        available_watchlists = list(resFilters['watchLists'].keys())
-
-        default_doctypes = {
-            'transcripts': {'label': 'Earnings Calls'},
-            'sec': {'label': '10-Q'},
-            'nonsec': {'label': 'QR'},
-            'S&P Transcripts' : {'label': 'Earnings Calls'}
-        }
-
-        if sector is None and watchlist is None and companies is None:
-            raise ValueError(
-                f"Sector or Watchlist must be specified\n Sectors -> {available_sectors}\n Watchlists -> {available_watchlists}")
-
-        if companies is not None:
-            search_type = 'company'
-        elif sector is not None:
-            if sector not in available_sectors:
-                raise ValueError(f"Sector must be one of these options -> {available_sectors}, you chose: '{sector}'")
-            else:
-                search_type = 'sector'
-        elif watchlist is not None:
-            if watchlist not in available_watchlists:
-                raise ValueError(
-                    f"Watchlist must be one of these options -> {available_watchlists}, you chose: '{watchlist}'")
-            else:
-                search_type = 'watchlist'
-
-        if doc_type is None:
-            doc_type = default_doctypes[corpus]
-            print(f"No doc_type provided, defaulting to '{doc_type['label']}'")
-        else:
-            if doc_type not in available_doctypes:
-                raise ValueError(
-                    f"doc_type must be one of these options -> {available_doctypes}, you chose: '{doc_type}'")
-            else:
-                doc_type = {'label': doc_type}
-
-        if start_date is None:
-            start_date = (datetime.today() - timedelta(days=90)).strftime("%Y-%m-%d")
-            print(f"No start_date provided, defaulting to '{start_date}'")
-        elif not _is_valid_date_format(start_date):
-            raise ValueError(f"start_date must be of type 'YYYY-MM-DD', you chose: '{start_date}'")
-
-        if end_date is None:
-            end_date = datetime.today().strftime("%Y-%m-%d")
-            print(f"No end_date provided, defaulting to '{end_date}'")
-        elif not _is_valid_date_format(end_date):
-            raise ValueError(f"end_date must be of type 'YYYY-MM-DD', you chose: '{end_date}'")
-
-        return search_type, doc_type, start_date, end_date, resFilters
-
-    def _get_LLM_EventTypes(self):
-        platform_corpus_name = self._platform_corpus_map['transcripts']
-        eventTypes = PerformRequest(self._base_headers, self._URL_Platform_Result_Filters,
-                                    request_obj={'corpus': platform_corpus_name, 'isLLM':True}, method='POST')['data']['eventTypes']
-        allEventTypes = []
-        for filter in eventTypes:
-            if filter['groupKey'] == 'AlphaLLM':
-                allEventTypes.append(filter['label'])
-
-        allEventTypes.sort()
-        return allEventTypes
-
-    def run_topic_research(self, corpus, nResults=1_000, companies=None, country=None, sentiment=None, eventType=None, freeText=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None) -> List:
-        search_type, doc_type, start_date, end_date, resFilters = self.checkRequest(corpus, companies, sector, watchlist, doc_type, start_date, end_date)
-        size = 1_000
-        platform_corpus_name = self._platform_corpus_map[corpus]
-        doc_type = doc_type['label']
-        request_obj = {
-            "dateRange": {'gte': start_date, 'lte': end_date},
-            "documentTypes": [doc_type],
-            "size": size,
-            "from" : 0,
-            "sort" : "desc",
-            "isLLM": True,
-            "corpus": platform_corpus_name,
-            "searchEventTextQuery": ""
-        }
-
-        if sentiment:
-            request_obj['patternSentiment'] = [sentiment.capitalize()]
-
-        if country:
-            request_obj['hqCountries'] = [country]
-
-        # if researchName:
-        #     request_obj['researchName'] = researchName
-        if freeText:
-            request_obj['freeText'] = [freeText]
-
-        if eventType:
-            ## for now only Alpha and LLMAlpha Topics are available
-            if corpus == 'transcripts':
-                avail_topics = self.models['LLMAlpha']['EventTypes']
-            else:
-                avail_topics = self.models['Alpha']['EventTypes']
-
-            if eventType in avail_topics:
-                request_obj['eventTypes'] = [eventType]
-            else:
-                raise ValueError(f"eventType must be one of these options -> {avail_topics}")
-
-        if search_type == 'company':
-            request_obj['companiesIds'] = companies
-            request_obj['retrieveType'] = 'company'
-        elif search_type == 'sector':
-            subSector = []
-            request_obj['sectors'] = [sector]
-            for subsector in resFilters['sectors'][sector]:
-                subSector.append(subsector)
-            request_obj['subSectors'] = subSector
-        elif search_type == 'watchlist':
-            request_obj['watchlist'] = resFilters['watchLists'][watchlist]
-        else:
-            raise NotImplementedError
-
-        results = self.process_research_topicQ(request_obj, nResults)
-
-        return results
-
-    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None, sentiment=None, companies=None, country=None, doc_type=None, start_date=None, end_date=None, similarity_threshold=.50) -> Dict:
-        if not searchQ:
-            raise ValueError("'searchQ' must be specified")
-        search_type, doc_type, start_date, end_date, resFilters = self.checkRequest(corpus,companies,  sector, watchlist, doc_type, start_date, end_date)
-
-        request_obj = {
-            'dateRange': {'gte': start_date, 'lte': end_date},
-            'documentTypes': [doc_type],
-            'isMacro': False,
-            'searchQuery': searchQ,
-            'size': 6_000,
-            'returnPineconeResults': True,
-        }
-
-        if sentiment:
-            request_obj['sentiment'] = sentiment
-
-        if country:
-            request_obj['country'] = country
-
-        if search_type == 'sector':
-            print('Running Sector based Query')
-            request_obj['focusOn'] = 'sectors'
-            with Pool(4) as pool:
-                tasks = []
-                for subsector in resFilters['sectors'][sector]:
-                    req_obj = copy.deepcopy(request_obj)
-                    req_obj['subSectors'] = [{'label': subsector, 'groupKey': sector}]
-                    tasks.append((subsector, req_obj, similarity_threshold))
-
-                results = list(tqdm(pool.imap(self.process_subQ, tasks), total=len(tasks)))
-
-        elif search_type == 'watchlist':
-            print('Running Watchlist based Query')
-            request_obj['focusOn'] = 'watchlist'
-            request_obj['focusOnValues'] = [{'key': watchlist, 'value': resFilters['watchLists'][watchlist]}]
-            task = (watchlist, request_obj, similarity_threshold)
-            results = [self.process_subQ(task)]
-
-        elif search_type == 'company':
-            request_obj['focusOnValues'] = []
-            for company in companies:
-                compObj={'key': '', 'value': [company]}
-                request_obj['focusOnValues'].append(compObj)
-            request_obj['focusOn'] = 'companies'
-            task = ('companies', request_obj, similarity_threshold)
-            results = [self.process_subQ(task)]
-            # request_obj['retrieveType'] = 'company'
-
-        else:
-            raise NotImplementedError
-
-        # Combine results into a single dictionary
-        datas = defaultdict(list)
-        for qname, recs in results:
-            if search_type == 'company':
-                for rec in recs:
-                    company_id = rec['documentMeta']['companyId']
-                    # Add each record to the list of the corresponding companyId
-                    datas[company_id].append(rec)
-            else:
-                datas[qname].extend(recs)
-        return dict(datas)
 
     def _validate_doc_model(self, doc_model):
         """
@@ -843,6 +509,354 @@ class ProntoPlatformAPI:
             print(f"Saved result to {filename}")
         except IOError as e:
             print(f"An error occurred while writing to the file: {e}")
+
+    def get_smart_search_filters(self, corpus):
+        corpus = corpus.lower()
+        if corpus not in ('transcripts', 'sec', 'nonsec'):
+            raise ValueError(f"Corpus must be one of these options -> ['transcripts', 'sec', 'nonsec'], you chose: '{corpus}'")
+        platform_corpus_name = self._platform_corpus_map[corpus]
+        resFilters =  PerformRequest(self._base_headers, self._URL_Platform_Result_Filters,  request_obj={'corpus': platform_corpus_name}, method='POST')['data']
+
+        doctype_filters = self._aggregate_filter_records(resFilters['documentTypes'])
+        sector_filters = self._aggregate_filter_records(resFilters['subSectors'])
+        # marketcap_filters = self.aggregate_filter_records(resFilters['marketCaps'])
+
+        # get watchlist filters
+        watchlist_filters = self.get_watchlists()
+
+        return {'docTypes': doctype_filters, 'sectors': sector_filters, 'watchLists': watchlist_filters} #, 'marketCaps': marketcap_filters}
+
+    def get_watchlists(self):
+        watchlist_filters = {}
+        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Watchlist, method='GET').get('data', None)
+        if requestResult:
+            watchlist_filters = defaultdict(list)
+            for rec in requestResult:
+                watchlist_filters[rec['watchlistName']].extend(rec['companies'])
+        return dict(watchlist_filters)
+
+    def get_context(self, sent_ids, N=3):
+        full_results = []
+        for sent_id_chunk in _chunk_list(sent_ids, 65):
+            request_obj = {'resultIds': sent_id_chunk, 'beforeSentence': N, 'afterSentence': N+1, 'withEvents': True}
+            requestResult = PerformRequest(self._base_headers, self._URL_Platform_Result_Context, request_obj=request_obj, method='POST')
+            if requestResult:
+                full_results.extend(requestResult)
+        return full_results
+
+    def _get_smart_search_full_results(self, sent_id_recs, similarity_threshold):
+        sent_ids_fltrd = [r for r in sent_id_recs if r['score'] >= similarity_threshold]
+        sent_ids_dict = {record['id']: record['score'] for record in sent_ids_fltrd}
+        exclude_fields = ['keywordsPositions', 'events', 'DLSentiment', 'speakerNameId', 'speakerCompanyId']
+
+        full_results = []
+        for sent_id_chunk in _chunk_list(sent_ids_fltrd, 100):
+            sent_ids = [x['id'] for x in sent_id_chunk]
+            request_obj = {'sentencesIds': sent_ids, 'excludes': exclude_fields}
+            requestResult = PerformRequest(self._base_headers, self._URL_Platform_Result_Datas, request_obj=request_obj, method='POST')
+            if requestResult.get('data', None):
+                res = [{**record['_source'], '_id': record['_id'], 'similarity_score': sent_ids_dict[record['_id']]} for record in requestResult['data']['sentences']]
+                full_results.append(res)
+
+        full_results[:] = [item for sublist in full_results for item in sublist]
+        full_results.sort(key=lambda x: x['similarity_score'], reverse=True)
+
+        return full_results
+
+    def _get_topic_research_full_results(self, sent_id_recs):
+        transformed_data = []
+
+        # Check if sent_id_recs is a list with a single item
+        if isinstance(sent_id_recs, list) and len(sent_id_recs) == 1:
+            sent_id_recs = sent_id_recs[0]
+
+        # Ensure we're working with the "data" key
+        data_to_process = sent_id_recs.get("data", sent_id_recs)
+
+        # If data_to_process is still a list with one item, unpack it
+        if isinstance(data_to_process, list) and len(data_to_process) == 1:
+            data_to_process = data_to_process[0]
+
+        # Loop over each element in the "data" list
+        for element in sent_id_recs["data"]:
+            # Extract necessary values for the transformation
+            document_meta = element.get("documentMeta", {})
+            event_data = element.get("event", {})
+            slots_filter = element.get("slotsFilter", {})
+            tags = element.get("tags", [])
+
+            # Create the transformed element
+            transformed_element = {
+                '_id': f'{document_meta.get("transcriptId", "")}-{element.get("sentenceIndex", 0)}',
+                "DLSentiment": element.get("DLSentiment", ""),
+                "importance": slots_filter.get("importance", ""),
+                "aspect": slots_filter.get("aspect", ""),
+                "comment": slots_filter.get("comment", ""),
+                "documentMeta": {
+                    "date": document_meta.get("date", ""),
+                    "country": document_meta.get("country", ""),
+                    "ticker": document_meta.get("ticker", ""),
+                    "documentType": document_meta.get("documentType", ""),
+                    "companyName": document_meta.get("companyName", ""),
+                    "corpus": document_meta.get("corpus", ""),
+                    "title": document_meta.get("title", ""),
+                    "hqCountry": document_meta.get("hqCountry", ""),
+                    "subSector": document_meta.get("subSector", ""),
+                    "companyId": document_meta.get("companyId", ""),
+                    "transcriptId": document_meta.get("transcriptId", ""),
+                    "exchange": document_meta.get("exchange", ""),
+                    "sector": document_meta.get("sector", ""),
+                    "day": document_meta.get("day", ""),
+                    "marketCap": document_meta.get("marketCap", 0)
+                },
+                "tags": tags,
+                "sentenceIndex": element.get("sentenceIndex", 0),
+                "paragraphIndex": element.get("paragraphIndex", 0),
+                "model": element.get("model", ""),
+                "text": element.get("text", ""),
+                "EventType": event_data.get("EventType", ""),
+                "EventText": event_data.get("EventText", ""),
+                "Polarity": event_data.get("Polarity", ""),
+                "llmTag": element.get("llmTag", "")
+            }
+
+            # Append the transformed element to the results list
+            transformed_data.append(transformed_element)
+
+        return transformed_data
+
+    def _process_subQ(self, args):
+        q_name, request_obj, similarity_threshold = args
+        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Vector_Search, request_obj=request_obj, method='POST')
+        recs = self._get_smart_search_full_results(requestResult.get('data', []), similarity_threshold)
+        return q_name, recs
+
+    def _process_research_topicQ(self, request_obj, nResults):
+        size = 1_000
+        requestResultList = []
+
+        if isinstance(nResults, str):
+            if nResults == 'all':
+                nResults = 10_000
+            else:
+                raise ValueError(f"Parameter 'nResults' must be 'all' or an integer, got {nResults}")
+
+        if nResults <= size:
+            size = nResults
+            request_obj['size'] = size
+            requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
+                                           request_obj=request_obj,
+                                           method='POST')
+            if requestResult:
+                recs = self._get_topic_research_full_results(requestResult['data'])
+                requestResultList.extend(recs)
+        else:
+            numLoops = math.ceil(nResults / size)
+            for i in range(numLoops):
+                request_obj['from'] = i * size
+                size = min(nResults - i*size, size)
+                request_obj['size'] = size
+                requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
+                                               request_obj=request_obj,
+                                               method='POST')
+                if requestResult:
+                    recs = self._get_topic_research_full_results(requestResult['data'])
+                    requestResultList.extend(recs)
+
+        # request_obj['size'] = size
+        return requestResultList
+
+    def _check_request(self, corpus, companies=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None):
+        if not corpus:
+            raise ValueError("'corpus' must be specified")
+
+        search_type = None
+        resFilters = self.get_smart_search_filters(corpus)
+        available_doctypes = list(resFilters['docTypes'].values())[0]
+        available_sectors = list(resFilters['sectors'].keys())
+        available_watchlists = list(resFilters['watchLists'].keys())
+
+        default_doctypes = {
+            'transcripts': {'label': 'Earnings Calls'},
+            'sec': {'label': '10-Q'},
+            'nonsec': {'label': 'QR'},
+            'S&P Transcripts' : {'label': 'Earnings Calls'}
+        }
+
+        if sector is None and watchlist is None and companies is None:
+            raise ValueError(
+                f"Sector or Watchlist must be specified\n Sectors -> {available_sectors}\n Watchlists -> {available_watchlists}")
+
+        if companies is not None:
+            search_type = 'company'
+        elif sector is not None:
+            if sector not in available_sectors:
+                raise ValueError(f"Sector must be one of these options -> {available_sectors}, you chose: '{sector}'")
+            else:
+                search_type = 'sector'
+        elif watchlist is not None:
+            if watchlist not in available_watchlists:
+                raise ValueError(
+                    f"Watchlist must be one of these options -> {available_watchlists}, you chose: '{watchlist}'")
+            else:
+                search_type = 'watchlist'
+
+        if doc_type is None:
+            doc_type = default_doctypes[corpus]
+            print(f"No doc_type provided, defaulting to '{doc_type['label']}'")
+        else:
+            if doc_type not in available_doctypes:
+                raise ValueError(
+                    f"doc_type must be one of these options -> {available_doctypes}, you chose: '{doc_type}'")
+            else:
+                doc_type = {'label': doc_type}
+
+        if start_date is None:
+            start_date = (datetime.today() - timedelta(days=90)).strftime("%Y-%m-%d")
+            print(f"No start_date provided, defaulting to '{start_date}'")
+        elif not _is_valid_date_format(start_date):
+            raise ValueError(f"start_date must be of type 'YYYY-MM-DD', you chose: '{start_date}'")
+
+        if end_date is None:
+            end_date = datetime.today().strftime("%Y-%m-%d")
+            print(f"No end_date provided, defaulting to '{end_date}'")
+        elif not _is_valid_date_format(end_date):
+            raise ValueError(f"end_date must be of type 'YYYY-MM-DD', you chose: '{end_date}'")
+
+        return search_type, doc_type, start_date, end_date, resFilters
+
+    def _get_LLM_EventTypes(self):
+        platform_corpus_name = self._platform_corpus_map['transcripts']
+        eventTypes = PerformRequest(self._base_headers, self._URL_Platform_Result_Filters,
+                                    request_obj={'corpus': platform_corpus_name, 'isLLM':True}, method='POST')['data']['eventTypes']
+        allEventTypes = []
+        for filter in eventTypes:
+            if filter['groupKey'] == 'AlphaLLM':
+                allEventTypes.append(filter['label'])
+
+        allEventTypes.sort()
+        return allEventTypes
+
+    def run_topic_research(self, corpus, nResults=1_000, companies=None, country=None, sentiment=None, eventType=None, freeText=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None) -> List:
+        search_type, doc_type, start_date, end_date, resFilters = self._check_request(corpus, companies, sector, watchlist, doc_type, start_date, end_date)
+        size = 1_000
+        platform_corpus_name = self._platform_corpus_map[corpus]
+        doc_type = doc_type['label']
+        request_obj = {
+            "dateRange": {'gte': start_date, 'lte': end_date},
+            "documentTypes": [doc_type],
+            "size": size,
+            "from" : 0,
+            "sort" : "desc",
+            "isLLM": True,
+            "corpus": platform_corpus_name,
+            "searchEventTextQuery": ""
+        }
+
+        if sentiment:
+            request_obj['patternSentiment'] = [sentiment.capitalize()]
+
+        if country:
+            request_obj['hqCountries'] = [country]
+
+        # if researchName:
+        #     request_obj['researchName'] = researchName
+        if freeText:
+            request_obj['freeText'] = [freeText]
+
+        if eventType:
+            ## for now only Alpha and LLMAlpha Topics are available
+            if corpus == 'transcripts':
+                avail_topics = self.models['LLMAlpha']['EventTypes']
+            else:
+                avail_topics = self.models['Alpha']['EventTypes']
+
+            if eventType in avail_topics:
+                request_obj['eventTypes'] = [eventType]
+            else:
+                raise ValueError(f"eventType must be one of these options -> {avail_topics}")
+
+        if search_type == 'company':
+            request_obj['companiesIds'] = companies
+            request_obj['retrieveType'] = 'company'
+        elif search_type == 'sector':
+            subSector = []
+            request_obj['sectors'] = [sector]
+            for subsector in resFilters['sectors'][sector]:
+                subSector.append(subsector)
+            request_obj['subSectors'] = subSector
+        elif search_type == 'watchlist':
+            request_obj['watchlist'] = resFilters['watchLists'][watchlist]
+        else:
+            raise NotImplementedError
+
+        results = self._process_research_topicQ(request_obj, nResults)
+
+        return results
+
+    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None, sentiment=None, companies=None, country=None, doc_type=None, start_date=None, end_date=None, similarity_threshold=.50) -> Dict:
+        if not searchQ:
+            raise ValueError("'searchQ' must be specified")
+        search_type, doc_type, start_date, end_date, resFilters = self._check_request(corpus, companies, sector, watchlist, doc_type, start_date, end_date)
+
+        request_obj = {
+            'dateRange': {'gte': start_date, 'lte': end_date},
+            'documentTypes': [doc_type],
+            'isMacro': False,
+            'searchQuery': searchQ,
+            'size': 6_000,
+            'returnPineconeResults': True,
+        }
+
+        if sentiment:
+            request_obj['sentiment'] = sentiment
+
+        if country:
+            request_obj['country'] = country
+
+        if search_type == 'sector':
+            print('Running Sector based Query')
+            request_obj['focusOn'] = 'sectors'
+            with Pool(4) as pool:
+                tasks = []
+                for subsector in resFilters['sectors'][sector]:
+                    req_obj = copy.deepcopy(request_obj)
+                    req_obj['subSectors'] = [{'label': subsector, 'groupKey': sector}]
+                    tasks.append((subsector, req_obj, similarity_threshold))
+
+                results = list(tqdm(pool.imap(self._process_subQ, tasks), total=len(tasks)))
+
+        elif search_type == 'watchlist':
+            print('Running Watchlist based Query')
+            request_obj['focusOn'] = 'watchlist'
+            request_obj['focusOnValues'] = [{'key': watchlist, 'value': resFilters['watchLists'][watchlist]}]
+            task = (watchlist, request_obj, similarity_threshold)
+            results = [self._process_subQ(task)]
+
+        elif search_type == 'company':
+            request_obj['focusOnValues'] = []
+            for company in companies:
+                compObj = {'key': '', 'value': [company]}
+                request_obj['focusOnValues'].append(compObj)
+            request_obj['focusOn'] = 'companies'
+            task = ('companies', request_obj, similarity_threshold)
+            results = [self._process_subQ(task)]
+            # request_obj['retrieveType'] = 'company'
+
+        else:
+            raise NotImplementedError
+
+        # Combine results into a single dictionary
+        datas = defaultdict(list)
+        for qname, recs in results:
+            if search_type == 'company':
+                for rec in recs:
+                    company_id = rec['documentMeta']['companyId']
+                    # Add each record to the list of the corresponding companyId
+                    datas[company_id].append(rec)
+            else:
+                datas[qname].extend(recs)
+        return dict(datas)
 
     @staticmethod
     async def _save_result_to_json_async(result, out_dir):
