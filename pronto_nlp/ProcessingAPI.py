@@ -30,13 +30,14 @@ else:
 
 
 def SignIn(user, password):
-  organization = "dev"
+  organization = "prod"
   M = re.match(r'^(.*?):(.*)$', user)
   if M:
     organization = M.group(1)
     user = M.group(2)
-  authURL = ("https://server-staging.prontonlp.com/token" if (organization == "dev" or organization == "staging") else
-             "https://server-prod.prontonlp.com/token")
+  authURL = (
+    "https://server-staging.prontonlp.com/api/token" if (organization == "dev" or organization == "staging") else
+    "https://server-prod.prontonlp.com/api/token")
 
   requestObj = {"email": user, "password": password, "organization": organization}
   body = json.dumps(requestObj, ensure_ascii=True).encode('ascii')
