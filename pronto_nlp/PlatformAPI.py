@@ -5,7 +5,6 @@ from typing import Union, List, Dict, AsyncGenerator
 import requests
 import math
 from collections import defaultdict
-from itertools import takewhile
 from tqdm import tqdm
 from multiprocessing import Pool
 import re
@@ -45,8 +44,14 @@ def SignIn(user, password):
 
 def PerformRequest(headers, url, request_obj=None, method='POST', check_response=True, encode_url=False):
     if encode_url and request_obj:
-        encoded_params = urlencode(request_obj)
-        url = f"{url}?{encoded_params}"
+        eks = request_obj.get("ExclusiveStartKey")
+        if isinstance(eks, dict) and eks:
+            request_obj['ExclusiveStartKey'] = quote(json.dumps(request_obj['ExclusiveStartKey']))
+            query_string = "&".join(f"{k}={v}" for k, v in request_obj.items())
+            url = f"{url}?{query_string}"
+        else:
+            encoded_params = urlencode(request_obj)
+            url = f"{url}?{encoded_params}"
 
     if method.upper() == 'POST':
         body = json.dumps(request_obj)
@@ -141,7 +146,7 @@ class ProntoWebSocketClient:
                 self.websocket = await websockets.connect(
                     self.uri,
                     ping_interval=5,
-                    ping_timeout=60
+                    ping_timeout=120
                 )
                 print("Connected to the websocket.")
                 break  # Exit the loop once connected
@@ -189,9 +194,9 @@ class ProntoWebSocketClient:
             processed_result = await self.result_callback(data)
             return processed_result
         except json.JSONDecodeError as e:
-            print(f"Failed to decode JSON message: {e}")
+            print(f"Failed to decode JSON message: {e} \n {message}")
         except Exception as e:
-            print(f"Failed to process message: {e}")
+            print(f"Failed to process message: {e} \n {message}")
 
     async def close(self):
         self.running = False
@@ -408,7 +413,7 @@ class ProntoPlatformAPI:
             while requestResult['ExclusiveStartKey']:
                 _req['ExclusiveStartKey'] = requestResult['ExclusiveStartKey']
                 requestResult = PerformRequest(self._base_headers, self._URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
-                doc_analytics.append(requestResult['data'])
+                doc_analytics.extend(requestResult['data'])
 
         doc_analytics = sorted(doc_analytics, key=lambda x: x['index'])
         doc_results = {"doc_meta": docmeta, "doc_analytics": doc_analytics}
@@ -872,22 +877,38 @@ class ProntoPlatformAPI:
 
     @staticmethod
     async def _perform_request_async(session, headers, url, params=None, method='POST', encode_url=False):
-        if method.upper() == 'POST':
+        # ——— apply ExclusiveStartKey bug-fix for URL encoding ———
+        if encode_url and params:
+            eks = params.get("ExclusiveStartKey")
+            if isinstance(eks, dict) and eks:
+                # JSON-dump and quote the dict, then build a manual query string
+                params["ExclusiveStartKey"] = quote(json.dumps(eks))
+                query_string = "&".join(f"{k}={v}" for k, v in params.items())
+                url = f"{url}?{query_string}"
+            else:
+                # fallback to regular urlencode of all params
+                encoded_params = urlencode(params)
+                url = f"{url}?{encoded_params}"
+
+        # ——— now issue the request ———
+        if method.upper() == "POST":
             body = json.dumps(params)
             async with session.post(url, headers=headers, data=body) as response:
                 response.raise_for_status()
                 return await response.json()
-        elif method.upper() == 'GET':
+
+        elif method.upper() == "GET":
             if encode_url and params:
-                encoded_params = urlencode(params)
-                url = f"{url}?{encoded_params}"
+                # already encoded in the URL
                 async with session.get(url, headers=headers) as response:
                     response.raise_for_status()
                     return await response.json()
             else:
+                # let aiohttp handle params
                 async with session.get(url, headers=headers, params=params) as response:
                     response.raise_for_status()
                     return await response.json()
+
         else:
             raise ValueError("Invalid method. Supported methods are 'POST' and 'GET'")
 
@@ -950,41 +971,99 @@ class ProntoPlatformAPI:
     async def _call_platform_analyzer(self, requestResult):
         """
         Asynchronously call the platform analyzer for a given document.
+        Waits for document conversion to complete before returning results.
         """
         headers = {"Authorization": self._authToken, "pronto-granted": "R$w#8k@Pmz%2x2Dg#5fGz"}
         doc_req = {"document": requestResult, "onModel": requestResult['onModel'], "streaming": False}
-        cntr = 0
 
-        async with aiohttp.ClientSession() as session:
-            retry_count = 0
-            max_retries = 10
-            while cntr < 120:
+        # Configuration constants
+        MAX_ATTEMPTS = 120
+        BASE_DELAY = 5
+        MAX_DELAY = 30
+        JSON_RETRY_LIMIT = 10
+
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
+            json_retry_count = 0
+
+            for attempt in range(1, MAX_ATTEMPTS + 1):
                 try:
-                    async with session.post(self._URL_Platform_Doc_Analyze, json=doc_req, headers=headers) as response:
-                        response_data = await response.json()
-                        if response.status == 200:
-                            print(f"Starting to analyze document '{requestResult['name']}'")
-                            return response_data
-                        else:
-                            print(f"Analysis request failed, retrying in 5 seconds...")
-                            cntr += 1
-                            await asyncio.sleep(5)
+                    async with session.post(
+                            self._URL_Platform_Doc_Analyze,
+                            json=doc_req,
+                            headers=headers
+                    ) as response:
 
-                except json.JSONDecodeError as e:
-                    # Handle JSON parsing errors, wait, and retry
-                    retry_count += 1
-                    if retry_count < max_retries:
-                        # print(f"Retry {retry_count}: JSON parsing error: {e}. Retrying in 5 seconds...")
-                        await asyncio.sleep(5)
-                    else:
-                        raise Exception("Maximum retry attempts reached. Exiting.") from e
+                        # Handle non-200 status codes
+                        if response.status != 200:
+                            delay = min(BASE_DELAY * (1.2 ** (attempt - 1)), MAX_DELAY)
+                            print(f"Attempt {attempt}: Request failed with status {response.status}. "
+                                  f"Retrying in {delay:.1f} seconds...")
+                            await asyncio.sleep(delay)
+                            continue
+
+                        try:
+                            response_data = await response.json()
+                        except json.JSONDecodeError as e:
+                            json_retry_count += 1
+                            if json_retry_count >= JSON_RETRY_LIMIT:
+                                raise Exception(
+                                    f"Failed to parse JSON response after {JSON_RETRY_LIMIT} attempts") from e
+
+                            print(f"JSON parsing error (attempt {json_retry_count}/{JSON_RETRY_LIMIT}): {e}. "
+                                  f"Retrying in {BASE_DELAY} seconds...")
+                            await asyncio.sleep(BASE_DELAY)
+                            continue
+
+                        # Reset JSON retry counter on successful parse
+                        json_retry_count = 0
+
+                        # Check document conversion status
+                        if self._is_document_still_processing(response_data):
+                            # Use exponential backoff for processing delays, but cap it
+                            delay = min(BASE_DELAY * (1.1 ** (attempt - 1)), MAX_DELAY)
+                            # print(f"Attempt {attempt}: Document '{requestResult.get('name', 'Unknown')}' "
+                            #       f"still being processed. Waiting {delay:.1f} seconds...")
+                            await asyncio.sleep(delay)
+                            continue
+
+                        elif self._is_document_processing_complete(response_data):
+                            print(f"Working on document '{requestResult.get('name', 'Unknown')}'")
+                            return response_data
+
+                        else:
+                            # Unexpected response format - log it and return
+                            print(f"Warning: Unexpected response format for document "
+                                  f"'{requestResult.get('name', 'Unknown')}'. Returning as-is.")
+                            return response_data
+
+                except asyncio.TimeoutError:
+                    delay = min(BASE_DELAY * (1.2 ** (attempt - 1)), MAX_DELAY)
+                    print(f"Attempt {attempt}: Request timeout. Retrying in {delay:.1f} seconds...")
+                    await asyncio.sleep(delay)
+
+                except aiohttp.ClientError as e:
+                    delay = min(BASE_DELAY * (1.2 ** (attempt - 1)), MAX_DELAY)
+                    print(f"Attempt {attempt}: Network error: {e}. Retrying in {delay:.1f} seconds...")
+                    await asyncio.sleep(delay)
 
                 except Exception as e:
-                    print(f"An error occurred: {e}")
-                    cntr += 1
-                    await asyncio.sleep(5)
+                    # For unexpected errors, use shorter delay and continue
+                    print(f"Attempt {attempt}: Unexpected error: {e}. Retrying in {BASE_DELAY} seconds...")
+                    await asyncio.sleep(BASE_DELAY)
 
-            raise Exception(f"Failed to analyze file after several attempts")
+            # If we get here, all attempts failed
+            raise Exception(f"Failed to analyze document '{requestResult.get('name', 'Unknown')}' "
+                            f"after {MAX_ATTEMPTS} attempts over {MAX_ATTEMPTS * BASE_DELAY / 60:.1f} minutes")
+
+    def _is_document_still_processing(self, response_data):
+        """Check if the document is still being processed."""
+        return (isinstance(response_data, dict) and
+                response_data.get('data') == 'document not yet converted')
+
+    def _is_document_processing_complete(self, response_data):
+        """Check if the document processing is complete."""
+        return (isinstance(response_data, dict) and
+                '$metadata' in response_data)
 
     async def _get_doc_analytics_async(self, docmeta):
         if self._authToken is None:
@@ -1097,7 +1176,7 @@ class ProntoPlatformAPI:
             for doc_meta in self._request_meta_map.values()
         ]
         # ... but we do *not* await them *immediately*, so the code below can run concurrently
-        print("Document analysis initiated for all documents.")
+        print("Document analysis is starting for all documents.")
 
         # -----------------------------
         # 4. Read + Yield WS Results
