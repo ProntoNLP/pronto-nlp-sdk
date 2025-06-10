@@ -184,6 +184,7 @@ srch_res = pronto.run_smart_search(corpus='transcripts', sector='Financials', se
 srch_res = pronto.run_smart_search(corpus='transcripts', companies=['32307', '21835', '29096', '18749'], searchQ='inventory')
 ```
 
+#### Get Relevant CompanyId Helper
 In order to identify which companyIds to enter, users can search by company name or company ticker symbol:
 ```python
 companyIdList = pronto.getCompanyId(companyName='tes')
@@ -197,7 +198,6 @@ pprint(companyIdList)
  {'id': '27444752', 'name': 'Tesla, Inc. (TSLA)', 'ticker': 'TSLA'}]
 ```
 
-
 Search results are returned as a dictionary, with each subsector/company as a key and the list of results as the corresponding value.
 For more results, users can adjust the similarity threshold and/or limit the timeframe by using start and end dates.
 Note that lowering the similarity threshold will return a wider variety of results.
@@ -208,6 +208,7 @@ Users can also define a watchlist of companies on the platform, and then choose 
 srch_res = pronto.run_smart_search(corpus='transcripts', watchlist='favs', searchQ='supply issues', start_date='2024-01-01')
 ```
 
+#### Get Query Filters Helper
 To view the possible input filters, users can call 'get_smart_search_filters' with the desired corpus, which returns a dictionary with the various document types, sectors, and watchlists available.
 The supported corpuses are: ['transcripts', 'sec', 'nonsec']:
 
@@ -258,11 +259,23 @@ llmalpha_events = pronto.models['LLMAlpha']['EventTypes']
 alpha_events = pronto.models['Alpha']['EventTypes']
 ```
 
+#### Get Query Filters Helper
 To view the possible input filters, users can call 'get_smart_search_filters' with the desired corpus, which returns a dictionary with the various document types, sectors, and watchlists available.
 The supported corpuses are: ['transcripts', 'sec', 'nonsec']:
 
 ```python
 resFilters = pronto.get_smart_search_filters(corpus='transcripts')
+```
+
+### Add Context to Query Results Helper
+Users may require a broader context for the query results. For example, 3 sentences before and after the event or matched result. To retreive result context, use the 'get_context' helper function. 
+
+The function accepts a list of DocIds and an N parameter (default: 3), and can retrieve context sentences along with their analytics for results from either 'run_smart_search' and 'run_topic_research' queries.
+
+```python
+srch_res = pronto.run_smart_search(corpus='transcripts', watchlist='favs', searchQ='AI', start_date='2025-01-01')
+docids = [x['_id'] for x in srch_res['favs']]
+context_res = pronto.get_context(docids)
 ```
 
 &nbsp;
