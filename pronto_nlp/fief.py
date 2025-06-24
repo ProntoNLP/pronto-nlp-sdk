@@ -168,14 +168,14 @@ def process_corpus(ruleset: str, inputCSV: str, outputCSV: str, user: str, passw
                     row[iResultColumn] = result
                     CSVWriter.writerow(row)
 
-                else:
-                    for iDoc, row in enumerate(CSVReader):
-                        print(f"Processing doc: {iDoc+1}", end='\r')
-                        text = row[iTextColumn].strip()
-                        result = ProcessingAPI.ProcessDoc(authToken, ruleset, outputtype, text) if text else ""
-                        while len(row) <= iResultColumn: row.append("")
-                        row[iResultColumn] = result
-                        CSVWriter.writerow(row)
-                    print()
+            else:
+                for iDoc, row in enumerate(CSVReader):
+                    print(f"Processing doc: {iDoc+1}", end='\r')
+                    text = row[iTextColumn].strip()
+                    result = ProcessingAPI.ProcessDoc(authToken, ruleset, outputtype, text) if text else ""
+                    while len(row) <= iResultColumn: row.append("")
+                    row[iResultColumn] = result
+                    CSVWriter.writerow(row)
+                print()
 
     return outputCSV
