@@ -4,6 +4,7 @@ import urllib.request
 from typing import Union, List, Dict, AsyncGenerator
 import requests
 import math
+import tempfile as std_tempfile
 from collections import defaultdict
 from tqdm import tqdm
 from multiprocessing import Pool
@@ -18,6 +19,9 @@ from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 import os
 import aiohttp
 import aiofiles
+import jwt
+
+from .APIStats import APIUserStats
 
 
 def SignIn(user, password):
@@ -38,7 +42,7 @@ def SignIn(user, password):
     if response.status == 200:
         result = response.read().decode('utf-8')
         if not result.startswith('{'):
-            print("Authentication successful")
+            print("Authentication successful")                
             return result
 
 
@@ -77,12 +81,12 @@ def PerformRequest(headers, url, request_obj=None, method='POST', check_response
 
     try:
         if url.endswith('reflect/convert'):
-            return response
-        return response.json()
+            return response, url
+        return response.json(), url
     except json.JSONDecodeError as e:
-        return response
+        return response, url
     except ValueError as e:
-        return response
+        return response, url
 
 
 def _strip_file_suffix(filename):
@@ -241,22 +245,28 @@ class ProntoPlatformAPI:
         self._user, self._password = user, password
         self._authToken = None
         self._base_headers = None
+        self._user_auth_obj = None
+        self._user_stats = APIUserStats()
         self._refresh_authToken()
         self.doc_list = list()
         self.models = dict()
         self.get_model_list()
-
+        
     def _refresh_authToken(self):
         self._authToken = SignIn(self._user, self._password)
         self._base_headers = {"Content-Type": "application/json", "Authorization": self._authToken,
                              "pronto-granted": "R$w#8k@Pmz%2x2Dg#5fGz"}
+        self._user_auth_obj = jwt.decode(self._authToken, options={"verify_signature": False})
+        self._user_stats.identify_user(self._user_auth_obj)
+        self._user_stats.track(event_name='SDK Login')
 
     def get_doc_list(self, refresh: bool = True) -> List:
         if self.doc_list and not refresh:
             return self.doc_list
         if self._authToken is None:
             self._refresh_authToken()
-        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Doc_Upload, method='GET')
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Doc_Upload, method='GET')
+        self._user_stats.track(event_name='SDK Get Document List', properties={'endpoint': url, 'documentsCount': len(requestResult['Items'])})
         docs_sorted = sorted(requestResult['Items'], key=lambda x: x['lastRun'], reverse=True)
         self.doc_list = docs_sorted
         print(f"Found {len(self.doc_list)} documents")
@@ -278,7 +288,8 @@ class ProntoPlatformAPI:
             return self.models
         if self._authToken is None:
             self._refresh_authToken()
-        requestResult = PerformRequest(self._base_headers, self._URL_Get_Models_Events, method='GET')
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Get_Models_Events, method='GET')
+        self._user_stats.track(event_name='SDK Get Model List', properties={'endpoint': url})
         self.models = self._organize_fief_model_response(requestResult)
         ## set LLMAlpha event types
         self.models['LLMAlpha']['EventTypes'] = self._get_LLM_EventTypes()
@@ -287,9 +298,10 @@ class ProntoPlatformAPI:
     async def convertPdfToText(self, fileKey):
         key = last_part = fileKey.split('/')[-1]
         try:
-            requestResult = PerformRequest(self._base_headers, self._URL_Convert_Pdf_to_Text,
+            requestResult, url = PerformRequest(self._base_headers, self._URL_Convert_Pdf_to_Text,
                                            request_obj={'fileKey': key},
                                            method='POST')
+            self._user_stats.track(event_name='SDK Convert PDF To Text', properties={'endpoint': url})
             await asyncio.sleep(10)
             return requestResult
         except Exception as e:
@@ -309,9 +321,10 @@ class ProntoPlatformAPI:
         if eventType not in model_obj['EventTypes']:
             print(f"Event {eventType} does not exist")
             return []
-        requestResult = PerformRequest(self._base_headers, self._URL_Get_Fief_Event_Rules,
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Get_Fief_Event_Rules,
                                        request_obj={'modelName': model_obj['modelPath'], 'eventType': eventType},
                                        method='POST')
+        self._user_stats.track(event_name='SDK Get FIEF Event Rules', properties={'endpoint': url, 'modelName': modelName, 'eventType': eventType})
         return requestResult['data']
 
     def create_fief_model(self, modelName):
@@ -321,7 +334,8 @@ class ProntoPlatformAPI:
         if modelName in self.models.keys():
             print(f"Model {modelName} already exists")
             return False
-        requestResult = PerformRequest(self._base_headers, self._URL_Create_Fief_Model, request_obj={'modelName': modelName}, method='POST')
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Create_Fief_Model, request_obj={'modelName': modelName}, method='POST')
+        self._user_stats.track(event_name='SDK Create FIEF Model', properties={'endpoint': url, 'modelName': modelName})
         self.get_model_list()
         return requestResult['data']
 
@@ -331,8 +345,9 @@ class ProntoPlatformAPI:
         if len(companyName) > 2:
             request_obj["searchCompaniesQuery"] = companyName
 
-        requestResult = PerformRequest(self._base_headers, self._URL_Get_Meta_Data,
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Get_Meta_Data,
                                        request_obj=request_obj, method='POST')
+        self._user_stats.track(event_name='SDK Get Company Id', properties={'endpoint': url})
 
         companies = []
         if requestResult['data']['results']:
@@ -351,8 +366,9 @@ class ProntoPlatformAPI:
         if modelName not in self.models.keys():
             print(f"Model {modelName} does not exist")
             return False
-        requestResult = PerformRequest(self._base_headers, self._URL_Delete_Fief_Model,
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Delete_Fief_Model,
                                        request_obj={'modelName': modelName}, method='POST')
+        self._user_stats.track(event_name='SDK Delete FIEF Model', properties={'endpoint': url, 'modelName': modelName})
         self.get_model_list()
         if 'error' in requestResult:
             return requestResult['error']
@@ -366,9 +382,10 @@ class ProntoPlatformAPI:
         if modelName not in self.models.keys():
             print(f"Model {modelName} does not exist - cannot create FIEF event in Model that does not exist")
             return False
-        requestResult = PerformRequest(self._base_headers, self._URL_Create_Fief_Event,
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Create_Fief_Event,
                                        request_obj={'id': '', 'modelName': modelName, 'eventType': eventType, 'categoryName': categoryName},
                                        method='POST')
+        self._user_stats.track(event_name='SDK Create FIEF Event', properties={'endpoint': url, 'modelName': modelName, 'eventType': eventType, 'categoryName': categoryName})
         self.get_model_list()
         return requestResult['data']
 
@@ -383,9 +400,10 @@ class ProntoPlatformAPI:
         if eventType not in model_obj['EventTypes']:
             print(f"Event Type {eventType} does not exist - cannot delete FIEF event that does not exist")
             return False
-        requestResult = PerformRequest(self._base_headers, self._URL_Delete_Fief_Event,
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Delete_Fief_Event,
                                        request_obj={'id': "", 'modelName': modelName, 'eventType': eventType},
                                        method='POST')
+        self._user_stats.track(event_name='SDK Delete FIEF Event', properties={'endpoint': url, 'modelName': modelName, 'eventType': eventType})
         self.get_model_list()
         if 'data' in requestResult:
             return requestResult['data']
@@ -396,8 +414,9 @@ class ProntoPlatformAPI:
         if self._authToken is None:
             self._refresh_authToken()
         _req = {'runId': docmeta['runId'], 'fileKey': docmeta['fileKey']}
-        res = PerformRequest(self._base_headers, self._URL_Platform_Doc_Upload, _req, method='DELETE', encode_url=True)
-        if not res:
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Doc_Upload, _req, method='DELETE', encode_url=True)
+        self._user_stats.track(event_name='SDK Delete Document', properties={'endpoint': url, 'documentName': docmeta['name'], 'runId': docmeta['runId']})
+        if not requestResult:
             print(f"Succeeded to delete document: {docmeta['name']} - fileKey: {docmeta['fileKey']}")
 
     def get_doc_analytics(self, docmeta, out_path: str = None) -> Dict:
@@ -407,12 +426,12 @@ class ProntoPlatformAPI:
             print(f'Document: {docmeta["name"]} - is still being analyzed. Results may be partial.')
 
         _req = {'ExclusiveStartKey': {}, 'runId': docmeta['runId'], 'fileKey': docmeta['fileKey']}
-        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
         doc_analytics = requestResult['data']
         if requestResult['ExclusiveStartKey']:
             while requestResult['ExclusiveStartKey']:
                 _req['ExclusiveStartKey'] = requestResult['ExclusiveStartKey']
-                requestResult = PerformRequest(self._base_headers, self._URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
+                requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Doc_Results, _req, method='GET', encode_url=True)
                 doc_analytics.extend(requestResult['data'])
 
         doc_analytics = sorted(doc_analytics, key=lambda x: x['index'])
@@ -421,6 +440,8 @@ class ProntoPlatformAPI:
             self._save_to_json(
                 os.path.join(out_path, f"{_strip_file_suffix(docmeta['name'])}_{docmeta['onModel']}.json"), doc_results)
 
+        self._user_stats.track(event_name='SDK Get Document Analytics', 
+                        properties={'endpoint': url, 'documentName': docmeta['name'], 'modelName': docmeta['onModel'], 'runId': docmeta['runId']})
         return doc_results
 
     @staticmethod
@@ -520,11 +541,13 @@ class ProntoPlatformAPI:
         if corpus not in ('transcripts', 'sec', 'nonsec'):
             raise ValueError(f"Corpus must be one of these options -> ['transcripts', 'sec', 'nonsec'], you chose: '{corpus}'")
         platform_corpus_name = self._platform_corpus_map[corpus]
-        resFilters =  PerformRequest(self._base_headers, self._URL_Platform_Result_Filters,  request_obj={'corpus': platform_corpus_name}, method='POST')['data']
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Result_Filters, request_obj={'corpus': platform_corpus_name}, method='POST')
+        self._user_stats.track(event_name='SDK Get Smart Search Filters', properties={'endpoint': url, 'corpus': corpus})
+        requestResult = requestResult['data']
 
-        doctype_filters = self._aggregate_filter_records(resFilters['documentTypes'])
-        sector_filters = self._aggregate_filter_records(resFilters['subSectors'])
-        # marketcap_filters = self.aggregate_filter_records(resFilters['marketCaps'])
+        doctype_filters = self._aggregate_filter_records(requestResult['documentTypes'])
+        sector_filters = self._aggregate_filter_records(requestResult['subSectors'])
+        # marketcap_filters = self.aggregate_filter_records(requestResult['marketCaps'])
 
         # get watchlist filters
         watchlist_filters = self.get_watchlists()
@@ -533,7 +556,10 @@ class ProntoPlatformAPI:
 
     def get_watchlists(self):
         watchlist_filters = {}
-        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Watchlist, method='GET').get('data', None)
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Watchlist, method='GET')
+        self._user_stats.track(event_name='SDK Get Watchlists', properties={'endpoint': url})
+        requestResult = requestResult.get('data', None)
+
         if requestResult:
             watchlist_filters = defaultdict(list)
             for rec in requestResult:
@@ -544,7 +570,8 @@ class ProntoPlatformAPI:
         full_results = []
         for sent_id_chunk in _chunk_list(sent_ids, 65):
             request_obj = {'resultIds': sent_id_chunk, 'beforeSentence': N, 'afterSentence': N+1, 'withEvents': True}
-            requestResult = PerformRequest(self._base_headers, self._URL_Platform_Result_Context, request_obj=request_obj, method='POST')
+            requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Result_Context, request_obj=request_obj, method='POST')
+            self._user_stats.track(event_name='SDK Get Context from Document', properties={'endpoint': url})
             if requestResult:
                 full_results.extend(requestResult)
         return full_results
@@ -558,7 +585,7 @@ class ProntoPlatformAPI:
         for sent_id_chunk in _chunk_list(sent_ids_fltrd, 100):
             sent_ids = [x['id'] for x in sent_id_chunk]
             request_obj = {'sentencesIds': sent_ids, 'excludes': exclude_fields}
-            requestResult = PerformRequest(self._base_headers, self._URL_Platform_Result_Datas, request_obj=request_obj, method='POST')
+            requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Result_Datas, request_obj=request_obj, method='POST')
             if requestResult.get('data', None):
                 res = [{**record['_source'], '_id': record['_id'], 'similarity_score': sent_ids_dict[record['_id']]} for record in requestResult['data']['sentences']]
                 full_results.append(res)
@@ -632,7 +659,7 @@ class ProntoPlatformAPI:
 
     def _process_subQ(self, args):
         q_name, request_obj, similarity_threshold = args
-        requestResult = PerformRequest(self._base_headers, self._URL_Platform_Vector_Search, request_obj=request_obj, method='POST')
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Vector_Search, request_obj=request_obj, method='POST')
         recs = self._get_smart_search_full_results(requestResult.get('data', []), similarity_threshold)
         return q_name, recs
 
@@ -649,7 +676,7 @@ class ProntoPlatformAPI:
         if nResults <= size:
             size = nResults
             request_obj['size'] = size
-            requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
+            requestResult, url = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
                                            request_obj=request_obj,
                                            method='POST')
             if requestResult:
@@ -661,7 +688,7 @@ class ProntoPlatformAPI:
                 request_obj['from'] = i * size
                 size = min(nResults - i*size, size)
                 request_obj['size'] = size
-                requestResult = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
+                requestResult, url = PerformRequest(self._base_headers, self._URL_Paltform_Topic_Research,
                                                request_obj=request_obj,
                                                method='POST')
                 if requestResult:
@@ -732,8 +759,9 @@ class ProntoPlatformAPI:
 
     def _get_LLM_EventTypes(self):
         platform_corpus_name = self._platform_corpus_map['transcripts']
-        eventTypes = PerformRequest(self._base_headers, self._URL_Platform_Result_Filters,
-                                    request_obj={'corpus': platform_corpus_name, 'isLLM':True}, method='POST')['data']['eventTypes']
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Result_Filters,
+                                    request_obj={'corpus': platform_corpus_name, 'isLLM':True}, method='POST')
+        eventTypes = requestResult['data']['eventTypes']
         allEventTypes = []
         for filter in eventTypes:
             if filter['groupKey'] == 'AlphaLLM':
@@ -796,6 +824,9 @@ class ProntoPlatformAPI:
             raise NotImplementedError
 
         results = self._process_research_topicQ(request_obj, nResults)
+
+        self._user_stats.track(event_name='SDK Run Topic Research', 
+                               properties={'corpus': corpus, 'searchType': search_type, 'docType': doc_type, 'startDate': start_date, 'endDate': end_date})
 
         return results
 
@@ -861,6 +892,10 @@ class ProntoPlatformAPI:
                     datas[company_id].append(rec)
             else:
                 datas[qname].extend(recs)
+
+        self._user_stats.track(event_name='SDK Run Smart Search', 
+                               properties={'corpus': corpus, 'searchQ': searchQ, 'searchType': search_type, 'docType': doc_type, 'startDate': start_date, 'endDate': end_date})
+
         return dict(datas)
 
     @staticmethod
@@ -963,6 +998,8 @@ class ProntoPlatformAPI:
                         response_text = await response.text()
                         raise Exception(
                             f"Failed to upload file '{file_path}'. Status code: {response.status}, Response: {response_text}")
+
+        self._user_stats.track(event_name='SDK Upload Document', properties={'endpoint': url, 'file_path': file_path})
         if file_path.endswith('.pdf'):
             res = await self.convertPdfToText(signed_url['fields']['key'])
             print (f'{file_path} converted successfully')
@@ -1028,6 +1065,7 @@ class ProntoPlatformAPI:
 
                         elif self._is_document_processing_complete(response_data):
                             print(f"Working on document '{requestResult.get('name', 'Unknown')}'")
+                            self._user_stats.track(event_name='SDK Call Document Analyzer', properties={"documentName": requestResult.get('name', 'Unknown'), "modelName": requestResult['onModel']})
                             return response_data
 
                         else:
@@ -1084,6 +1122,7 @@ class ProntoPlatformAPI:
 
         doc_analytics = sorted(doc_analytics, key=lambda x: x['index'])
         doc_results = {"doc_meta": docmeta, "doc_analytics": doc_analytics}
+        self._user_stats.track(event_name='SDK Get Document Analytics', properties={'documentName': docmeta['name'], 'runId': docmeta['runId']})
         return doc_results
 
     async def _process_websocket_result(self, raw_result: dict, out_dir: str = None):
@@ -1117,6 +1156,82 @@ class ProntoPlatformAPI:
             print(f"Error processing websocket result: {e}")
             # You could return None or re-raise
             return None
+
+    async def _create_temp_file(self, text_content: str, unique_ids: Union[None, List[str]], idx: int, std_tempfile) -> str:
+        """
+        Create a temporary file for text content.
+        
+        Args:
+            text_content: The text to write to the file
+            unique_ids: Optional list of unique identifiers
+            idx: Index of the current text
+            std_tempfile: The tempfile module
+            
+        Returns:
+            Path to the created temporary file
+        """
+        if unique_ids is not None:
+            # Use provided unique_id as filename (no tempfile prefix/suffix)
+            filename = self._sanitize_filename(unique_ids[idx])
+            if not filename.endswith('.txt'):
+                filename += '.txt'
+            
+            temp_dir = std_tempfile.gettempdir()
+            file_path = os.path.join(temp_dir, filename)
+            
+            async with aiofiles.open(file_path, mode='w', encoding='utf-8') as temp_file:
+                await temp_file.write(text_content)
+                
+            return file_path
+        
+        else:
+            # Generate filename from text content and use tempfile prefix/suffix
+            base = '_'.join(text_content.split()[:5])
+            prefix = self._sanitize_filename(base)[:50] or 'text'  # Fallback if empty
+            
+            async with tempfile.NamedTemporaryFile(
+                mode='w', 
+                suffix='.txt', 
+                prefix=f"{prefix}__", 
+                delete=False,
+                encoding='utf-8'
+            ) as temp_file:
+                await temp_file.write(text_content)
+                return temp_file.name
+    
+    def _sanitize_filename(self, filename: str) -> str:
+        """
+        Sanitize a string to be safe for use as a filename.
+        
+        Args:
+            filename: The string to sanitize
+            
+        Returns:
+            Sanitized filename string
+        """
+        if not filename:
+            return 'unnamed'
+        
+        # Keep only alphanumeric characters, underscores, hyphens, and dots
+        sanitized = ''.join(c for c in filename if c.isalnum() or c in ['_', '-', '.'])
+        
+        # Ensure it's not empty after sanitization
+        return sanitized if sanitized else 'unnamed'
+    
+    async def _cleanup_temp_files(self, temp_files: List[str]) -> None:
+        """
+        Clean up temporary files.
+        
+        Args:
+            temp_files: List of file paths to delete
+        """
+        for file_path in temp_files:
+            try:
+                if os.path.exists(file_path):
+                    os.unlink(file_path)
+            except OSError as e:
+                print(f"Warning: Failed to delete temporary file {file_path}: {e}")
+
 
     async def analyze_docs(self, doc_models: List[dict], out_dir: str = None, keep_results: bool = True) -> AsyncGenerator[dict, None]:
         """
@@ -1234,30 +1349,50 @@ class ProntoPlatformAPI:
         self._request_meta_map.clear()
         print("Analyzer completed.")
 
-    async def analyze_text(self, text: Union[str, List[str]], model: str, out_dir: str = None, keep_results: bool = True) -> AsyncGenerator[Dict, None]:
+    async def analyze_text(self, text: Union[str, List[str]], model: str, unique_ids: Union[None, List[str]] = None, out_dir: str = None, keep_results: bool = True) -> AsyncGenerator[Dict, None]:
+        """
+        Analyze text content using the specified model.
+        
+        Args:
+            text: String or list of strings to analyze
+            model: Model name to use for analysis
+            unique_ids: Optional list of unique identifiers for each text (used as filenames)
+            out_dir: Optional output directory for results
+            keep_results: Whether to keep results after analysis
+            
+        Yields:
+            Analysis results as dictionaries
+        """
+        # Normalize text to list
         if isinstance(text, str):
             text = [text]
-
+        
+        # Validate unique_ids if provided
+        if unique_ids is not None:
+            if len(unique_ids) != len(text):
+                raise ValueError("Length of unique_ids must match length of text inputs.")
+            if len(set(unique_ids)) != len(unique_ids):
+                raise ValueError("All unique_ids must be unique.")
+        
+        # Filter out empty texts and track indices
+        valid_texts = [(idx, item) for idx, item in enumerate(text) if item.strip()]
+        
+        if not valid_texts:
+            raise ValueError("No non-empty text provided for analysis.")
+        
         temp_files = []
+        
         try:
-            for item in text:
-                if not item:
-                    continue
-                # Create a filename from the first few words of the text
-                filename = '_'.join(item.split()[:5])  # Take first 5 words
-                filename = ''.join(c for c in filename if c.isalnum() or c in ['_', '-'])  # Remove special characters
-                filename = f"{filename[:50]}__"  # Limit to 50 characters
-
-                async with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', prefix=filename, delete=False) as temp_file:
-                    await temp_file.write(item)
-                    temp_files.append(temp_file.name)
-
+            for idx, item in valid_texts:
+                file_path = await self._create_temp_file(item, unique_ids, idx, std_tempfile)
+                temp_files.append(file_path)
+            
             doc_models = [{'name': file_path, 'onModel': model} for file_path in temp_files]
-
+            
             async for result in self.analyze_docs(doc_models, out_dir, keep_results):
                 yield result
-
+                
         finally:
-            for file_path in temp_files:
-                os.unlink(file_path)
+            # Clean up temporary files
+            await self._cleanup_temp_files(temp_files)
 

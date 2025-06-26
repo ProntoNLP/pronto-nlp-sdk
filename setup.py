@@ -14,6 +14,8 @@ setup(
         'aiohttp',
         'aiofiles',
         'tqdm',
+        'mixpanel',
+        'pyjwt',
     ],
     entry_points={
         'console_scripts': [
