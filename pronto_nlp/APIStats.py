@@ -48,7 +48,7 @@ class APIUserStats:
                 '$name': user_obj.get('https://prontonlp.com/name', ''),
                 'SDK_platform': self.platform,
                 'SDK_version': self.sdk_version,
-                'organizationName': user_obj.get('https://prontonlp.com/org', '')
+                'organization': user_obj.get('https://prontonlp.com/org', '')
             }
             self.mp.people_set(self.user_id, properties)
             self.default_properties = {**self.default_properties, **properties}

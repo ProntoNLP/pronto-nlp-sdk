@@ -7,7 +7,6 @@ import math
 import tempfile as std_tempfile
 from collections import defaultdict
 from tqdm import tqdm
-from multiprocessing import Pool
 import re
 from datetime import datetime, timedelta
 from urllib.parse import urlencode, quote
@@ -250,8 +249,14 @@ class ProntoPlatformAPI:
         self._refresh_authToken()
         self.doc_list = list()
         self.models = dict()
-        self.get_model_list()
-        
+        self.get_model_list(refresh=True)
+        self.watchlists = dict()
+        self.get_watchlists(refresh=True)
+        self.doctype_filters = dict()
+        self.sector_filters = dict()
+        self.get_doctype_and_sector_filters(refresh=True)
+
+
     def _refresh_authToken(self):
         self._authToken = SignIn(self._user, self._password)
         self._base_headers = {"Content-Type": "application/json", "Authorization": self._authToken,
@@ -283,7 +288,7 @@ class ProntoPlatformAPI:
                 organized_data[f"{pref}{os.path.basename(modname)}"] = {'EventTypes': modevents['EventTypes'], 'modelPath': f"{pref}{modname}"}
         return organized_data
 
-    def get_model_list(self, refresh: bool = True) -> Dict:
+    def get_model_list(self, refresh: bool = False) -> Dict:
         if self.models and not refresh:
             return self.models
         if self._authToken is None:
@@ -310,7 +315,7 @@ class ProntoPlatformAPI:
     def get_fief_event_rules(self, modelName, eventType) -> List:
         if self._authToken is None:
             self._refresh_authToken()
-        self.get_model_list()
+        self.get_model_list(refresh=True)
         if modelName in ['LLMAlpha', 'LLMMacro']:
             print("FIEF event rules can only be retrieved for FIEF models, not LLMs")
             return []
@@ -336,7 +341,7 @@ class ProntoPlatformAPI:
             return False
         requestResult, url = PerformRequest(self._base_headers, self._URL_Create_Fief_Model, request_obj={'modelName': modelName}, method='POST')
         self._user_stats.track(event_name='SDK Create FIEF Model', properties={'endpoint': url, 'modelName': modelName})
-        self.get_model_list()
+        self.get_model_list(refresh=True)
         return requestResult['data']
 
     def getCompanyId(self, companyName):
@@ -369,7 +374,7 @@ class ProntoPlatformAPI:
         requestResult, url = PerformRequest(self._base_headers, self._URL_Delete_Fief_Model,
                                        request_obj={'modelName': modelName}, method='POST')
         self._user_stats.track(event_name='SDK Delete FIEF Model', properties={'endpoint': url, 'modelName': modelName})
-        self.get_model_list()
+        self.get_model_list(refresh=True)
         if 'error' in requestResult:
             return requestResult['error']
         else:
@@ -386,7 +391,7 @@ class ProntoPlatformAPI:
                                        request_obj={'id': '', 'modelName': modelName, 'eventType': eventType, 'categoryName': categoryName},
                                        method='POST')
         self._user_stats.track(event_name='SDK Create FIEF Event', properties={'endpoint': url, 'modelName': modelName, 'eventType': eventType, 'categoryName': categoryName})
-        self.get_model_list()
+        self.get_model_list(refresh=True)
         return requestResult['data']
 
     def delete_fief_event(self, modelName, eventType):
@@ -404,7 +409,7 @@ class ProntoPlatformAPI:
                                        request_obj={'id': "", 'modelName': modelName, 'eventType': eventType},
                                        method='POST')
         self._user_stats.track(event_name='SDK Delete FIEF Event', properties={'endpoint': url, 'modelName': modelName, 'eventType': eventType})
-        self.get_model_list()
+        self.get_model_list(refresh=True)
         if 'data' in requestResult:
             return requestResult['data']
         else:
@@ -536,44 +541,65 @@ class ProntoPlatformAPI:
         except IOError as e:
             print(f"An error occurred while writing to the file: {e}")
 
-    def get_smart_search_filters(self, corpus):
+    def get_smart_search_filters(self, corpus: str, refresh: bool = False):
         corpus = corpus.lower()
-        if corpus not in ('transcripts', 'sec', 'nonsec'):
+        if corpus not in self._platform_corpus_map:
             raise ValueError(f"Corpus must be one of these options -> ['transcripts', 'sec', 'nonsec'], you chose: '{corpus}'")
-        platform_corpus_name = self._platform_corpus_map[corpus]
-        requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Result_Filters, request_obj={'corpus': platform_corpus_name}, method='POST')
-        self._user_stats.track(event_name='SDK Get Smart Search Filters', properties={'endpoint': url, 'corpus': corpus})
-        requestResult = requestResult['data']
 
-        doctype_filters = self._aggregate_filter_records(requestResult['documentTypes'])
-        sector_filters = self._aggregate_filter_records(requestResult['subSectors'])
-        # marketcap_filters = self.aggregate_filter_records(requestResult['marketCaps'])
+        if refresh:
+            self.get_doctype_and_sector_filters(refresh=True)
+            self.get_watchlists(refresh=True)
 
-        # get watchlist filters
-        watchlist_filters = self.get_watchlists()
+        resFilters = {'docTypes': self.doctype_filters.get(corpus, {}), 
+                      'sectors': self.sector_filters.get(corpus, {}), 
+                      'watchLists': self.watchlists} 
+        return resFilters
 
-        return {'docTypes': doctype_filters, 'sectors': sector_filters, 'watchLists': watchlist_filters} #, 'marketCaps': marketcap_filters}
+    def get_doctype_and_sector_filters(self, refresh: bool = False):
+        if self.doctype_filters and self.sector_filters and not refresh:
+            return self.doctype_filters, self.sector_filters
+        if self._authToken is None:
+            self._refresh_authToken()
+        
+        doctypes_f = dict()
+        sectors_f = dict()
+        for corpus in self._platform_corpus_map:
+            platform_corpus_name = self._platform_corpus_map[corpus]
+            requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Result_Filters, request_obj={'corpus': platform_corpus_name}, method='POST')
+            requestResult = requestResult['data']
+            d_f = self._aggregate_filter_records(requestResult['documentTypes'])
+            s_f = self._aggregate_filter_records(requestResult['subSectors'])
+            doctypes_f[corpus] = d_f
+            sectors_f[corpus] = s_f
 
-    def get_watchlists(self):
-        watchlist_filters = {}
+        self.doctype_filters = doctypes_f
+        self.sector_filters = sectors_f
+        self._user_stats.track(event_name='SDK Get Smart Search Filters', properties={'endpoint': self._URL_Platform_Result_Filters})
+        return self.doctype_filters, self.sector_filters
+    
+    def get_watchlists(self, refresh: bool = False):
+        if self.watchlists and not refresh:
+            return self.watchlists
+        if self._authToken is None:
+            self._refresh_authToken()
         requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Watchlist, method='GET')
-        self._user_stats.track(event_name='SDK Get Watchlists', properties={'endpoint': url})
         requestResult = requestResult.get('data', None)
-
+        watchlist_filters = defaultdict(list)
         if requestResult:
-            watchlist_filters = defaultdict(list)
             for rec in requestResult:
                 watchlist_filters[rec['watchlistName']].extend(rec['companies'])
-        return dict(watchlist_filters)
+        self.watchlists = dict(watchlist_filters)
+        self._user_stats.track(event_name='SDK Get Watchlists', properties={'endpoint': url})
+        return self.watchlists
 
     def get_context(self, sent_ids, N=3):
         full_results = []
         for sent_id_chunk in _chunk_list(sent_ids, 65):
             request_obj = {'resultIds': sent_id_chunk, 'beforeSentence': N, 'afterSentence': N+1, 'withEvents': True}
             requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Result_Context, request_obj=request_obj, method='POST')
-            self._user_stats.track(event_name='SDK Get Context from Document', properties={'endpoint': url})
             if requestResult:
                 full_results.extend(requestResult)
+        self._user_stats.track(event_name='SDK Get Context from Document', properties={'endpoint': url})        
         return full_results
 
     def _get_smart_search_full_results(self, sent_id_recs, similarity_threshold):
@@ -826,7 +852,7 @@ class ProntoPlatformAPI:
         results = self._process_research_topicQ(request_obj, nResults)
 
         self._user_stats.track(event_name='SDK Run Topic Research', 
-                               properties={'corpus': corpus, 'searchType': search_type, 'docType': doc_type, 'startDate': start_date, 'endDate': end_date})
+                               properties={'corpus': corpus, 'searchType': search_type, 'docType': doc_type, 'eventType': eventType, 'sector': sector, 'startDate': start_date, 'endDate': end_date})
 
         return results
 
@@ -853,14 +879,14 @@ class ProntoPlatformAPI:
         if search_type == 'sector':
             print('Running Sector based Query')
             request_obj['focusOn'] = 'sectors'
-            with Pool(4) as pool:
-                tasks = []
-                for subsector in resFilters['sectors'][sector]:
-                    req_obj = copy.deepcopy(request_obj)
-                    req_obj['subSectors'] = [{'label': subsector, 'groupKey': sector}]
-                    tasks.append((subsector, req_obj, similarity_threshold))
-
-                results = list(tqdm(pool.imap(self._process_subQ, tasks), total=len(tasks)))
+            tasks = []
+            for subsector in resFilters['sectors'][sector]:
+                req_obj = copy.deepcopy(request_obj)
+                req_obj['subSectors'] = [{'label': subsector, 'groupKey': sector}]
+                tasks.append((subsector, req_obj, similarity_threshold))
+            results = []
+            for task in tqdm(tasks, total=len(tasks)):
+                results.append(self._process_subQ(task))
 
         elif search_type == 'watchlist':
             print('Running Watchlist based Query')
@@ -894,7 +920,7 @@ class ProntoPlatformAPI:
                 datas[qname].extend(recs)
 
         self._user_stats.track(event_name='SDK Run Smart Search', 
-                               properties={'corpus': corpus, 'searchQ': searchQ, 'searchType': search_type, 'docType': doc_type, 'startDate': start_date, 'endDate': end_date})
+                               properties={'corpus': corpus, 'searchQ': searchQ, 'searchType': search_type, 'docType': doc_type['label'], 'sector': sector, 'startDate': start_date, 'endDate': end_date})
 
         return dict(datas)
 
@@ -1107,7 +1133,7 @@ class ProntoPlatformAPI:
         if self._authToken is None:
             self._refresh_authToken()
         if docmeta['status'] != 'Completed':
-            print(f'Document: {docmeta["name"]} - is still being analyzed. Results may be partial.')
+            print(f'Document: {docmeta["fileKey"]} - is still being analyzed. Results may be partial.')
 
         _req = {'ExclusiveStartKey': {}, 'runId': docmeta['runId'], 'fileKey': docmeta['fileKey']}
         doc_analytics = []
@@ -1122,7 +1148,7 @@ class ProntoPlatformAPI:
 
         doc_analytics = sorted(doc_analytics, key=lambda x: x['index'])
         doc_results = {"doc_meta": docmeta, "doc_analytics": doc_analytics}
-        self._user_stats.track(event_name='SDK Get Document Analytics', properties={'documentName': docmeta['name'], 'runId': docmeta['runId']})
+        self._user_stats.track(event_name='SDK Get Document Analytics', properties={'fileKey': docmeta['fileKey'], 'runId': docmeta['runId']})
         return doc_results
 
     async def _process_websocket_result(self, raw_result: dict, out_dir: str = None):
