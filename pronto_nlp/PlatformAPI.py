@@ -19,7 +19,6 @@ import os
 import aiohttp
 import aiofiles
 import jwt
-
 from .APIStats import APIUserStats
 
 
