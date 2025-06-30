@@ -44,14 +44,14 @@ def generate_signal_csv(ruleset: str, db: str, startdate: str, enddate: str, tag
     authToken, _user_stats = user_login(user, password)
 
     def ProgressReport(sMsg): print(sMsg, end='\r')
+    _user_stats.track(event_name='SDK FIEF Generate Signal', properties={'ruleset': ruleset, 'DB': db, 'startdate': startdate, 'enddate': enddate, 'tags': tags})
+
     signalCSV = ProcessingAPI.GenerateSignalCSV(authToken, ruleset, db, startdate, enddate, None, tags, ProgressReport)
     print()
 
     with open(outputCSV, "w", encoding="utf-8", errors="ignore") as FOutCSV:
         FOutCSV.write(signalCSV)
     
-    _user_stats.track(event_name='SDK FIEF Generate Signal', properties={'ruleset': ruleset, 'DB': db, 'startdate': startdate, 'enddate': enddate, 'tags': tags})
-
     return signalCSV
 
 def generate_find_matches_csv(ruleset: str, events: str, db: str, startdate: str, enddate: str, tags: str, outputCSV: str, metadata: bool, user: str, password: str):
@@ -77,14 +77,14 @@ def generate_find_matches_csv(ruleset: str, events: str, db: str, startdate: str
     authToken, _user_stats = user_login(user, password)
 
     def ProgressReport(sMsg): print(sMsg, end='\r')
+    _user_stats.track(event_name='SDK FIEF Generate Find Matches', properties={'ruleset': ruleset, 'events': events, 'DB': db, 'startdate': startdate, 'enddate': enddate, 'tags': tags})
+
     sRule = "<" + events + ">"
     matchesCSV = ProcessingAPI.GenerateFindMatchesCSV(authToken, ruleset, db, sRule, startdate, enddate, None, tags, ProgressReport, metadata)
     print()
 
     with open(outputCSV, "w", encoding="utf-8", errors="ignore") as FOutCSV:
         FOutCSV.write(matchesCSV)
-
-    _user_stats.track(event_name='SDK FIEF Generate Find Matches', properties={'ruleset': ruleset, 'events': events, 'DB': db, 'startdate': startdate, 'enddate': enddate, 'tags': tags})
 
     return matchesCSV
 
@@ -171,6 +171,8 @@ def process_corpus(ruleset: str, inputCSV: str, outputCSV: str, user: str, passw
 
     authToken, _user_stats = user_login(user, password)
 
+    _user_stats.track(event_name='SDK FIEF Process Corpus', properties={'ruleset': ruleset})
+
     with open(inputCSV, "r", encoding="utf-8", errors="ignore") as FCSV:
         CSVReader = csv.reader(FCSV, csv.excel)
         headers = next(CSVReader)
@@ -202,7 +204,5 @@ def process_corpus(ruleset: str, inputCSV: str, outputCSV: str, user: str, passw
                     row[iResultColumn] = result
                     CSVWriter.writerow(row)
                 print()
-
-    _user_stats.track(event_name='SDK FIEF Process Corpus', properties={'ruleset': ruleset})
 
     return outputCSV

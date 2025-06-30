@@ -107,7 +107,7 @@ The models can be any of your FIEF models (see below) or one of ProntoNLP's LLMs
 
 LLM Models currently available are: 'LLMAlpha'.
 
-Here is an example of how to process documents asynchronously
+Here is an example of how to process documents asynchronously:
 ```python
 from pronto_nlp import PlatformAPI as pAPI
 import asyncio
@@ -134,6 +134,9 @@ if __name__ == "__main__":
 ```
 
 Users can also process text strings directly
+
+Here, users can pass in an optional 'unique_ids' parameter to assign names to each string input.
+
 ```python
 from pronto_nlp import PlatformAPI as pAPI
 import asyncio
@@ -146,6 +149,7 @@ async def process_texts():
         "During fiscal year '24, we utilized cash of $9.9 billion towards shareholder returns, including $9.5 billion in share repurchases."
         ],
         model='LLMAlpha',
+        unique_ids=['doc1', 'doc2'],
         out_dir='./pronto_results'):
         print("Saved result:", result)
 
@@ -284,7 +288,7 @@ context_res = pronto.get_context(docids)
 from pronto_nlp import fief
 
 # Generate a signal CSV using FIEF Server.
-success = fief.generate_signal_csv(
+fief_results = fief.generate_signal_csv(
     ruleset="Alpha",
     db="SnP_Transcripts_ParseCache.db3",
     startdate="2021-01-01",
@@ -294,25 +298,25 @@ success = fief.generate_signal_csv(
     user="org:user@example.com",
     password="password"
 )
-print(success)  # True if successful, False otherwise
+print('success')  # True if successful, False otherwise
 
 # Generate a Find Matches CSV using FIEF Server.
-success = fief.generate_find_matches_csv(
+fief_results = fief.generate_find_matches_csv(
     ruleset="Alpha",
     events="Revenue|Margin",
     db="SnP_Transcripts_ParseCache.db3",
-    startdate="2022-01-01",
-    enddate="2022-04-31",
+    startdate="2025-01-01",
+    enddate="2025-04-30",
     tags="#Sector_Financials #SpeakerType_Executives_CFO",
     outputCSV="output_matches.csv",
     metadata=True,
     user="org:user@example.com",
     password="password"
 )
-print(success)  # True if successful, False otherwise
+print('success')  # True if successful, False otherwise
 
 # Process a corpus using FIEF Server.
-success = fief.process_corpus(
+fief_results = fief.process_corpus(
     ruleset="Alpha",
     inputCSV="input_corpus.csv",
     outputCSV="output_corpus.csv",
@@ -321,21 +325,21 @@ success = fief.process_corpus(
     outputtype="events",
     numthreads=10
 )
-print(success)  # True if successful, False otherwise
+print('success')  # True if successful, False otherwise
 
 # List parse cache databases available on the FIEF Server.
-success = fief.list_parse_cache_dbs(
+fief_results = fief.list_parse_cache_dbs(
     user="org:user@example.com",
     password="password"
 )
-print(success)  # True if successful, False otherwise
+print('success')  # True if successful, False otherwise
 
 # List rulesets available for a user on the FIEF Server.
-success = fief.list_rulesets(
+fief_results = fief.list_rulesets(
     user="org:user@example.com",
     password="password"
 )
-print(success)  # True if successful, False otherwise
+print('success')  # True if successful, False otherwise
 ```
 
 **Custom Rulesets**

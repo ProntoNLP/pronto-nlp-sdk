@@ -10,7 +10,7 @@ def get_sdk_version():
         return pkg_resources.get_distribution('pronto-nlp').version
     except:
         # Fallback to hardcoded version
-        return '0.4.9'
+        return '0.5.0'
 
 
 class APIUserStats:
@@ -53,6 +53,7 @@ class APIUserStats:
             self.mp.people_set(self.user_id, properties)
             self.default_properties = {**self.default_properties, **properties}
         except Exception as e:
+            print(f"Error identifying user: {e}")
             pass
     
     def track(self, event_name, properties=None):
