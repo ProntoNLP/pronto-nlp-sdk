@@ -53,7 +53,6 @@ class APIUserStats:
             self.mp.people_set(self.user_id, properties)
             self.default_properties = {**self.default_properties, **properties}
         except Exception as e:
-            print(f"Error identifying user: {e}")
             pass
     
     def track(self, event_name, properties=None):
