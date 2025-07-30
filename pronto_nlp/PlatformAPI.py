@@ -22,15 +22,17 @@ import jwt
 from .APIStats import APIUserStats
 
 
-def SignIn(user, password):
-    organization = "prod"
+def SignIn(user, password, env='prod'):
     M = re.match(r'^(.*?):(.*)$', user)
     if M:
         organization = M.group(1)
         user = M.group(2)
-    authURL = ("https://server-staging.prontonlp.com/api/token" if (organization == "dev" or organization == "staging") else
-               "https://server-prod.prontonlp.com/api/token")
-
+    if (env == "dev" or env == "staging"):
+        authURL = "https://server-staging.prontonlp.com/api/token"
+        organization = 'staging'
+    else:
+        authURL = "https://server-prod.prontonlp.com/api/token"
+    # print(authURL)
     requestObj = {"email": user, "password": password, "organization": organization}
     body = json.dumps(requestObj, ensure_ascii=True).encode('ascii')
     request = urllib.request.Request(authURL, data=body,
@@ -208,13 +210,26 @@ class ProntoWebSocketClient:
 
 
 class ProntoPlatformAPI:
-    def __init__(self, user, password):
+    def __init__(self, user, password, env="prod"):
+        self._user, self._password, self._env = user, password, env
+        if self._env == 'prod':
+            self._URL_api_base = "https://server-prod.prontonlp.com/api"
+            self._URL_Doc_Results_WebSocket = "wss://socket-prod.prontonlp.com/"
+        elif self._env in ('dev', 'staging'):
+            print("Warning: Using dev/staging environment. This is not recommended for production use.")
+            self._URL_api_base = "https://server-staging.prontonlp.com/api"
+            self._URL_Doc_Results_WebSocket = "wss://socket-staging.prontonlp.com/"
+
+        self._authToken = None
+        self._base_headers = None
+        self._user_auth_obj = None
+        self._user_stats = APIUserStats()
+        self._refresh_authToken()
+        
         self._request_meta_map = dict()
-        self._URL_api_base = "https://server-prod.prontonlp.com/api"
         self._URL_Platform_Doc_Upload = f"{self._URL_api_base}/reflect/documents"
         self._URL_Platform_Doc_Analyze = f"{self._URL_api_base}/reflect/analyze-document"
         self._URL_Platform_Doc_Results = f"{self._URL_api_base}/reflect/results"
-        self._URL_Doc_Results_WebSocket = "wss://socket-prod.prontonlp.com/"
 
         self._URL_Platform_Vector_Search = f"{self._URL_api_base}/get-vector-search-results"
         self._URL_Platform_Result_Filters = f"{self._URL_api_base}/get-filters"
@@ -240,15 +255,13 @@ class ProntoPlatformAPI:
         self._URL_Convert_Pdf_to_Text = f"{self._URL_api_base}/reflect/convert"
         self._platform_corpus_map = {'transcripts': 'S&P Transcripts', 'sec': 'SEC Filings',
                                      'nonsec': 'Non-SEC Filings'}
-        self._user, self._password = user, password
-        self._authToken = None
-        self._base_headers = None
-        self._user_auth_obj = None
-        self._user_stats = APIUserStats()
-        self._refresh_authToken()
+        
         self.doc_list = list()
         self.models = dict()
         self.get_model_list(refresh=True)
+        ## Alias for compatibility
+        self.models['LLMExpertNetwork'] = self.models['LLMexpertnetwork']
+        ##
         self.watchlists = dict()
         self.get_watchlists(refresh=True)
         self.doctype_filters = dict()
@@ -257,7 +270,7 @@ class ProntoPlatformAPI:
 
 
     def _refresh_authToken(self):
-        self._authToken = SignIn(self._user, self._password)
+        self._authToken = SignIn(self._user, self._password, self._env)
         self._base_headers = {"Content-Type": "application/json", "Authorization": self._authToken,
                              "pronto-granted": "R$w#8k@Pmz%2x2Dg#5fGz"}
         self._user_auth_obj = jwt.decode(self._authToken, options={"verify_signature": False})
@@ -478,21 +491,48 @@ class ProntoPlatformAPI:
                 return False, f"doc-model request is missing required key: {key}"
 
         if doc_model['onModel'] not in self.models:
-            return False, f"doc-model request is using an invalid model: {doc_model['onModel']} -- Allowed Models: {self.models}"
+            return False, f"doc-model request is using an invalid model: {doc_model['onModel']} -- Allowed Models: {list(self.models.keys())}"
 
         if not (doc_model['name'].endswith('.txt') or doc_model['name'].endswith('.pdf')):
             return False, f"doc-model request is using an invalid doc type: {doc_model['name']} -- Doc type must be .txt or .pdf"
 
+        if doc_model['onModel'] == 'LLMExpertNetwork' and not doc_model['name'].endswith('.pdf'):
+            return False, f"doc-model request for LLMExpertNetwork model must be a .pdf file -- got: {doc_model['name']}"
+        
         return True, ''
 
     @staticmethod
-    def _count_event_sentiments(data, isLLM):
+    def _count_event_sentiments(data, isLLM, onModel):
         def extract_importance(slotrec):
             for item in slotrec:
                 if item.get('SlotName') == 'importance':
                     return item.get('Value').lower()
             return None
 
+        # Special handling for LLMMacro
+        if onModel == 'LLMMacro':
+            event_sentiment_counts = {"Hawkish": 0, "Dovish": 0, "Neutral": 0}
+            importance_sentiment_counts = {
+                'Hawkish': {'high': 0, 'low': 0, 'medium': 0},
+                'Dovish': {'high': 0, 'low': 0, 'medium': 0},
+                'Neutral': {'high': 0, 'low': 0, 'medium': 0}
+            }
+            for entry in data:
+                if 'Events' in entry:
+                    for event in entry['Events']:
+                        sentiment_value = event.get('Polarity', 'Neutral')
+                        sentiment_value = sentiment_value.title()
+                        if sentiment_value not in event_sentiment_counts:
+                            sentiment_value = 'Neutral'
+                        event_sentiment_counts[sentiment_value] += 1
+
+                        # Count importance for macro as well
+                        importance = extract_importance(event.get('Slots', []))
+                        if importance is not None and importance in importance_sentiment_counts[sentiment_value]:
+                            importance_sentiment_counts[sentiment_value][importance] += 1
+
+            return None, event_sentiment_counts, importance_sentiment_counts
+            
         dlscore_counts = {"positive": 0, "negative": 0, "neutral": 0}
         event_sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
         importance_sentiment_counts = {'negative': {'high': 0, 'low': 0, 'medium': 0},
@@ -527,6 +567,10 @@ class ProntoPlatformAPI:
                         if importance is not None:
                             importance_sentiment_counts[sentiment_value][importance] += 1
 
+        # If all dlscore_counts are zero, return None for dlscore_counts
+        if all(v == 0 for v in dlscore_counts.values()):
+            dlscore_counts = None
+        
         return dlscore_counts, event_sentiment_counts, importance_sentiment_counts
 
     @staticmethod
@@ -981,9 +1025,11 @@ class ProntoPlatformAPI:
         _req = doc_model.copy()
         _req['name'] = os.path.basename(doc_model['name'])
         _req['isLLM'] = False
-        if _req['onModel'].lower() == 'llmalpha':
-            _req['onModel'] = 'Alpha'
+        if _req['onModel'].lower() in ('llmalpha', 'llmmacro', 'llmexpertnetwork'):
             _req['isLLM'] = True
+            _req['onModel'] = _req['onModel'][3:].capitalize()
+            # _req['onModel'] = 'Alpha'
+            
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=_req, headers=headers) as response:
                 if response.status == 200:
@@ -1163,7 +1209,8 @@ class ProntoPlatformAPI:
 
             dlscore_counts, event_sentiment_counts, importance_sentiment_counts = self._count_event_sentiments(
                 raw_result['doc_analytics'],
-                isLLM=raw_result['doc_meta']['isLLM']
+                isLLM=raw_result['doc_meta']['isLLM'],
+                onModel=raw_result['doc_meta']['onModel']
             )
             raw_result['doc_meta']['sentiment'] = event_sentiment_counts
             raw_result['doc_meta']['DLSentiment'] = dlscore_counts
