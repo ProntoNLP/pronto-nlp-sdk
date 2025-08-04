@@ -259,9 +259,6 @@ class ProntoPlatformAPI:
         self.doc_list = list()
         self.models = dict()
         self.get_model_list(refresh=True)
-        ## Alias for compatibility
-        self.models['LLMExpertNetwork'] = self.models['LLMexpertnetwork']
-        ##
         self.watchlists = dict()
         self.get_watchlists(refresh=True)
         self.doctype_filters = dict()
