@@ -373,6 +373,81 @@ class ProntoPlatformAPI:
             response =  'no company found'
             return response
 
+    def get_company_documents(self, companies, corpus=None, doc_type=None, start_date=None, end_date=None, country=None, nResults=100) -> List:
+        """Retrieve a list of documents for given company IDs.
+
+        Parameters
+        ----------
+        companies : list[str]
+            List of companyIds (use getCompanyId to resolve names/tickers).
+        corpus : str, optional
+            One of 'transcripts', 'sec', 'nonsec'. Defaults to all corpora.
+        doc_type : str, optional
+            Document type label, e.g. 'Earnings Calls', '10-Q', 'QR'.
+        start_date : str, optional
+            Start date in 'YYYY-MM-DD' format. Defaults to 90 days ago.
+        end_date : str, optional
+            End date in 'YYYY-MM-DD' format. Defaults to today.
+        country : str, optional
+            Filter by HQ country.
+        nResults : int, optional
+            Max number of documents to return (default 100, max 10000).
+
+        Returns
+        -------
+        list[dict]
+            List of document metadata records.
+        """
+        if not companies:
+            raise ValueError("'companies' must be a non-empty list of companyIds")
+
+        if start_date is None:
+            start_date = (datetime.today() - timedelta(days=90)).strftime("%Y-%m-%d")
+        elif not _is_valid_date_format(start_date):
+            raise ValueError(f"start_date must be 'YYYY-MM-DD', got: '{start_date}'")
+
+        if end_date is None:
+            end_date = datetime.today().strftime("%Y-%m-%d")
+        elif not _is_valid_date_format(end_date):
+            raise ValueError(f"end_date must be 'YYYY-MM-DD', got: '{end_date}'")
+
+        page_size = min(nResults, 100)
+        request_obj = {
+            "retrieveType": "document",
+            "companiesIds": companies,
+            "dateRange": {"gte": start_date, "lte": end_date},
+            "size": page_size,
+            "from": 0,
+        }
+
+        if corpus:
+            if corpus not in self._platform_corpus_map:
+                raise ValueError(f"corpus must be one of {list(self._platform_corpus_map.keys())}")
+            request_obj["corpus"] = self._platform_corpus_map[corpus]
+
+        if doc_type:
+            request_obj["documentTypes"] = [doc_type]
+
+        if country:
+            request_obj["hqCountries"] = [country]
+
+        all_results = []
+        while len(all_results) < nResults:
+            request_obj["from"] = len(all_results)
+            request_obj["size"] = min(page_size, nResults - len(all_results))
+            requestResult, url = PerformRequest(self._base_headers, self._URL_Get_Meta_Data,
+                                                request_obj=request_obj, method='POST')
+            batch = requestResult['data']['results']
+            total = requestResult['data'].get('total', len(batch))
+            all_results.extend(batch)
+            if len(batch) == 0 or len(all_results) >= total:
+                break
+
+        self._user_stats.track(event_name='SDK Get Company Documents',
+                               properties={'endpoint': url, 'corpus': corpus, 'companiesCount': len(companies), 'resultsCount': len(all_results)})
+        print(f"Found {len(all_results)} documents")
+        return all_results
+
     def delete_fief_model(self, modelName):
         if self._authToken is None:
             self._refresh_authToken()

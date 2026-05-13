@@ -41,6 +41,7 @@ These are the main functions powered by the PlatformAPI Module:
 2. Document Upload and Processing
 3. Corpus Smart Search
 4. Topic Research
+5. Company Document Retrieval
 
 &nbsp;
 ### Document Management and Analytics
@@ -271,6 +272,66 @@ The supported corpuses are: ['transcripts', 'sec', 'nonsec']:
 resFilters = pronto.get_smart_search_filters(corpus='transcripts')
 ```
 
+### Company Document Retrieval
+
+The SDK allows users to retrieve a list of documents filed by specific companies directly from the ProntoNLP corpus — without needing a search query or topic filter.
+This is useful for building document inventories, running coverage checks, or retrieving all filings of a given type for a set of companies.
+
+Users can retrieve documents using the `get_company_documents` function.
+
+Input parameters include:
+- `companies`: list of companyIds to retrieve documents for (required, use `getCompanyId` to resolve names/tickers)
+- `corpus`: `'transcripts'`, `'sec'`, or `'nonsec'` (optional — omit to search across all corpora)
+- `doc_type`: a document type label to filter by, e.g. `'Earnings Calls'`, `'10-Q'`, `'10-K'`, `'QR'` (optional)
+- `start_date`: start date (YYYY-MM-DD) for document search (default=current_date - 90 days)
+- `end_date`: end date (YYYY-MM-DD) for document search (default=current_date)
+- `country`: filter by company HQ country (optional)
+- `nResults`: maximum number of documents to return, paginates automatically (default=100)
+
+```python
+# Step 1: resolve company name or ticker to a companyId
+nvda = pronto.getCompanyId('NVIDIA')
+nvda_id = nvda[0]['id']  # '32307'
+
+# Step 2: retrieve all 10-Q and 10-K filings for the last 2 years
+tenq_docs = pronto.get_company_documents(
+    companies=[nvda_id],
+    corpus='sec',
+    doc_type='10-Q',
+    start_date='2023-01-01',
+    end_date='2025-12-31',
+    nResults=50,
+)
+
+tenk_docs = pronto.get_company_documents(
+    companies=[nvda_id],
+    corpus='sec',
+    doc_type='10-K',
+    start_date='2023-01-01',
+    end_date='2025-12-31',
+)
+
+# Retrieve earnings call transcripts for multiple companies
+apple_id = pronto.getCompanyId('Apple')[0]['id']
+msft_id  = pronto.getCompanyId('Microsoft')[0]['id']
+
+transcripts = pronto.get_company_documents(
+    companies=[apple_id, msft_id],
+    corpus='transcripts',
+    doc_type='Earnings Calls',
+    start_date='2024-01-01',
+)
+```
+
+Each result is a document metadata record containing fields such as `transcriptId`, `title`, `date`, `documentType`, `companyName`, `corpus`, and more.
+
+To view the available document types per corpus, use the `get_smart_search_filters` helper:
+```python
+filters = pronto.get_smart_search_filters(corpus='sec')
+# SEC doc types: ['8-K', '6-K', '10-Q', '10-K', '20-F', '40-F']
+```
+
+&nbsp;
 ### Add Context to Query Results Helper
 Users may require a broader context for the query results. For example, 3 sentences before and after the event or matched result. To retreive result context, use the 'get_context' helper function. 
 
