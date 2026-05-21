@@ -913,8 +913,8 @@ class ProntoPlatformAPI:
         allEventTypes.sort()
         return allEventTypes
 
-    def run_topic_research(self, corpus, nResults=1_000, companies=None, country=None, sentiment=None, eventType=None, freeText=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None) -> List:
-        search_type, doc_type, start_date, end_date, resFilters = self._check_request(corpus, companies, sector, watchlist, doc_type, start_date, end_date)
+    def run_topic_research(self, corpus, nResults=1_000, companies=None, country=None, sentiment=None, eventType=None, freeText=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None, doc_ids=None) -> List:
+        search_type, doc_type, start_date, end_date, resFilters = self._check_request(corpus, companies, sector, watchlist, doc_type, start_date, end_date, doc_ids=doc_ids)
         size = 1_000
         platform_corpus_name = self._platform_corpus_map[corpus]
         doc_type = doc_type['label']
@@ -952,7 +952,9 @@ class ProntoPlatformAPI:
             else:
                 raise ValueError(f"eventType must be one of these options -> {avail_topics}")
 
-        if search_type == 'company':
+        if search_type == 'document':
+            request_obj['transcriptsIds'] = doc_ids
+        elif search_type == 'company':
             request_obj['companiesIds'] = companies
             request_obj['retrieveType'] = 'company'
         elif search_type == 'sector':
