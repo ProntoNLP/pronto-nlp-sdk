@@ -1024,12 +1024,9 @@ class ProntoPlatformAPI:
 
         elif search_type == 'document':
             print('Running Document ID based Query')
-            results = []
-            for doc_id in tqdm(doc_ids, total=len(doc_ids)):
-                req_obj = copy.deepcopy(request_obj)
-                req_obj['docId'] = doc_id
-                results.append((doc_id, req_obj, similarity_threshold))
-            results = [self._process_subQ(task) for task in results]
+            request_obj['docIds'] = doc_ids
+            task = ('documents', request_obj, similarity_threshold)
+            results = [self._process_subQ(task)]
 
         else:
             raise NotImplementedError
