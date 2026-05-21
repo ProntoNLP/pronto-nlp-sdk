@@ -839,7 +839,7 @@ class ProntoPlatformAPI:
         # request_obj['size'] = size
         return requestResultList
 
-    def _check_request(self, corpus, companies=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None):
+    def _check_request(self, corpus, companies=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None, doc_ids=None):
         if not corpus:
             raise ValueError("'corpus' must be specified")
 
@@ -856,11 +856,13 @@ class ProntoPlatformAPI:
             'S&P Transcripts' : {'label': 'Earnings Calls'}
         }
 
-        if sector is None and watchlist is None and companies is None:
+        if sector is None and watchlist is None and companies is None and not doc_ids:
             raise ValueError(
                 f"Sector or Watchlist must be specified\n Sectors -> {available_sectors}\n Watchlists -> {available_watchlists}")
 
-        if companies is not None:
+        if doc_ids is not None:
+            search_type = 'document'
+        elif companies is not None:
             search_type = 'company'
         elif sector is not None:
             if sector not in available_sectors:
@@ -911,8 +913,8 @@ class ProntoPlatformAPI:
         allEventTypes.sort()
         return allEventTypes
 
-    def run_topic_research(self, corpus, nResults=1_000, companies=None, country=None, sentiment=None, eventType=None, freeText=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None) -> List:
-        search_type, doc_type, start_date, end_date, resFilters = self._check_request(corpus, companies, sector, watchlist, doc_type, start_date, end_date)
+    def run_topic_research(self, corpus, nResults=1_000, companies=None, country=None, sentiment=None, eventType=None, freeText=None, sector=None, watchlist=None, doc_type=None, start_date=None, end_date=None, doc_ids=None) -> List:
+        search_type, doc_type, start_date, end_date, resFilters = self._check_request(corpus, companies, sector, watchlist, doc_type, start_date, end_date, doc_ids=doc_ids)
         size = 1_000
         platform_corpus_name = self._platform_corpus_map[corpus]
         doc_type = doc_type['label']
@@ -950,7 +952,9 @@ class ProntoPlatformAPI:
             else:
                 raise ValueError(f"eventType must be one of these options -> {avail_topics}")
 
-        if search_type == 'company':
+        if search_type == 'document':
+            request_obj['transcriptsIds'] = doc_ids
+        elif search_type == 'company':
             request_obj['companiesIds'] = companies
             request_obj['retrieveType'] = 'company'
         elif search_type == 'sector':
@@ -971,10 +975,10 @@ class ProntoPlatformAPI:
 
         return results
 
-    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None, sentiment=None, companies=None, country=None, doc_type=None, start_date=None, end_date=None, similarity_threshold=.50) -> Dict:
+    def run_smart_search(self, corpus, searchQ, sector=None, watchlist=None, sentiment=None, companies=None, country=None, doc_type=None, start_date=None, end_date=None, similarity_threshold=.50, doc_ids=None) -> Dict:
         if not searchQ:
             raise ValueError("'searchQ' must be specified")
-        search_type, doc_type, start_date, end_date, resFilters = self._check_request(corpus, companies, sector, watchlist, doc_type, start_date, end_date)
+        search_type, doc_type, start_date, end_date, resFilters = self._check_request(corpus, companies, sector, watchlist, doc_type, start_date, end_date, doc_ids=doc_ids)
 
         request_obj = {
             'dateRange': {'gte': start_date, 'lte': end_date},
@@ -1019,6 +1023,12 @@ class ProntoPlatformAPI:
             task = ('companies', request_obj, similarity_threshold)
             results = [self._process_subQ(task)]
             # request_obj['retrieveType'] = 'company'
+
+        elif search_type == 'document':
+            print('Running Document ID based Query')
+            request_obj['docIds'] = doc_ids
+            task = ('documents', request_obj, similarity_threshold)
+            results = [self._process_subQ(task)]
 
         else:
             raise NotImplementedError
