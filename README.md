@@ -367,6 +367,29 @@ The result contains a `title`, a list of `sentences` (each with `text` and `sour
 ```
 
 &nbsp;
+### Document Outlook Summaries (Predictions, Risks, Questions)
+
+The SDK also allows users to retrieve three pre-built LLM summaries for a single document — the same "outlook" summaries surfaced on the ProntoNLP platform: management predictions, main risks, and key analyst questions.
+
+- `get_document_predictions(doc_id, corpus)`
+- `get_document_risks(doc_id, corpus)`
+- `get_document_questions(doc_id, corpus)`
+
+Input parameters include:
+- `doc_id`: document id, e.g. a `transcriptId` from `get_company_documents` (required)
+- `corpus`: `'transcripts'`, `'sec'`, or `'nonsec'` (required)
+
+Each returns a list of summary points, each with `text` and `sources`:
+```python
+predictions = pronto.get_document_predictions(doc_id=doc_id, corpus='transcripts')
+risks = pronto.get_document_risks(doc_id=doc_id, corpus='transcripts')
+questions = pronto.get_document_questions(doc_id=doc_id, corpus='transcripts')
+
+for p in predictions:
+    print('-', p['text'])
+```
+
+&nbsp;
 ### Add Context to Query Results Helper
 Users may require a broader context for the query results. For example, 3 sentences before and after the event or matched result. To retreive result context, use the 'get_context' helper function. 
 
