@@ -249,6 +249,9 @@ class ProntoPlatformAPI:
 
         self._URL_Get_Meta_Data = f"{self._URL_api_base}/get-metadata-results"
         self._URL_Platform_Custom_Summary = f"{self._URL_api_base}/document-custom-summary"
+        self._URL_Platform_Predictions_Summary = f"{self._URL_api_base}/document-management-predictions-summary"
+        self._URL_Platform_Risks_Summary = f"{self._URL_api_base}/document-main-risks-summary"
+        self._URL_Platform_Questions_Summary = f"{self._URL_api_base}/document-questions-summary"
 
         self._URL_Paltform_Topic_Research_Results = f"{self._URL_api_base}/research/researches/topic"
         self._URL_Paltform_Topic_Research = f"{self._URL_api_base}/research/get-research-results"
@@ -449,7 +452,7 @@ class ProntoPlatformAPI:
         print(f"Found {len(all_results)} documents")
         return all_results
 
-    def get_custom_summary(self, doc_id, corpus, filters=None, focus=None) -> Dict:
+    def get_document_custom_summary(self, doc_id, corpus, filters=None, focus=None) -> Dict:
         """Get an LLM-generated custom summary for a single document.
 
         Parameters
@@ -490,6 +493,72 @@ class ProntoPlatformAPI:
                                properties={'endpoint': url, 'corpus': corpus, 'docId': doc_id, 'focus': focus})
 
         return requestResult
+
+    def _get_document_summary_list(self, url, doc_id, corpus, event_name) -> List:
+        if not doc_id:
+            raise ValueError("'doc_id' must be specified")
+
+        if corpus not in self._platform_corpus_map:
+            raise ValueError(f"corpus must be one of {list(self._platform_corpus_map.keys())}")
+        platform_corpus_name = self._platform_corpus_map[corpus]
+
+        request_obj = {'docId': doc_id, 'corpus': platform_corpus_name}
+        requestResult, request_url = PerformRequest(self._base_headers, url, request_obj=request_obj, method='GET')
+
+        self._user_stats.track(event_name=event_name, properties={'endpoint': request_url, 'corpus': corpus, 'docId': doc_id})
+
+        return requestResult
+
+    def get_document_predictions_summary(self, doc_id, corpus) -> List:
+        """Get management-predictions summary points for a single document.
+
+        Parameters
+        ----------
+        doc_id : str
+            Document id (a single transcript/filing id).
+        corpus : str
+            One of 'transcripts', 'sec', 'nonsec'.
+
+        Returns
+        -------
+        list[dict]
+            List of {'text': str, 'sources': list[dict]}.
+        """
+        return self._get_document_summary_list(self._URL_Platform_Predictions_Summary, doc_id, corpus, 'SDK Get Document Predictions')
+
+    def get_document_risks_summary(self, doc_id, corpus) -> List:
+        """Get main-risks summary points for a single document.
+
+        Parameters
+        ----------
+        doc_id : str
+            Document id (a single transcript/filing id).
+        corpus : str
+            One of 'transcripts', 'sec', 'nonsec'.
+
+        Returns
+        -------
+        list[dict]
+            List of {'text': str, 'sources': list[dict]}.
+        """
+        return self._get_document_summary_list(self._URL_Platform_Risks_Summary, doc_id, corpus, 'SDK Get Document Risks')
+
+    def get_document_questions_summary(self, doc_id, corpus) -> List:
+        """Get key-questions summary points for a single document.
+
+        Parameters
+        ----------
+        doc_id : str
+            Document id (a single transcript/filing id).
+        corpus : str
+            One of 'transcripts', 'sec', 'nonsec'.
+
+        Returns
+        -------
+        list[dict]
+            List of {'text': str, 'sources': list[dict]}.
+        """
+        return self._get_document_summary_list(self._URL_Platform_Questions_Summary, doc_id, corpus, 'SDK Get Document Questions')
 
     def delete_fief_model(self, modelName):
         if self._authToken is None:
