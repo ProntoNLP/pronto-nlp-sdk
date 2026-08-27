@@ -509,7 +509,7 @@ class ProntoPlatformAPI:
 
         return requestResult
 
-    def get_document_predictions(self, doc_id, corpus) -> List:
+    def get_document_predictions_summary(self, doc_id, corpus) -> List:
         """Get management-predictions summary points for a single document.
 
         Parameters
@@ -526,7 +526,7 @@ class ProntoPlatformAPI:
         """
         return self._get_document_summary_list(self._URL_Platform_Predictions_Summary, doc_id, corpus, 'SDK Get Document Predictions')
 
-    def get_document_risks(self, doc_id, corpus) -> List:
+    def get_document_risks_summary(self, doc_id, corpus) -> List:
         """Get main-risks summary points for a single document.
 
         Parameters
@@ -543,7 +543,7 @@ class ProntoPlatformAPI:
         """
         return self._get_document_summary_list(self._URL_Platform_Risks_Summary, doc_id, corpus, 'SDK Get Document Risks')
 
-    def get_document_questions(self, doc_id, corpus) -> List:
+    def get_document_questions_summary(self, doc_id, corpus) -> List:
         """Get key-questions summary points for a single document.
 
         Parameters
