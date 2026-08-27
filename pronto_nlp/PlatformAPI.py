@@ -248,6 +248,7 @@ class ProntoPlatformAPI:
         self._URL_Delete_Fief_Pattern = f"{self._URL_api_base}/models/delete-user-pattern"
 
         self._URL_Get_Meta_Data = f"{self._URL_api_base}/get-metadata-results"
+        self._URL_Platform_Custom_Summary = f"{self._URL_api_base}/document-custom-summary"
 
         self._URL_Paltform_Topic_Research_Results = f"{self._URL_api_base}/research/researches/topic"
         self._URL_Paltform_Topic_Research = f"{self._URL_api_base}/research/get-research-results"
@@ -447,6 +448,48 @@ class ProntoPlatformAPI:
                                properties={'endpoint': url, 'corpus': corpus, 'companiesCount': len(companies), 'resultsCount': len(all_results)})
         print(f"Found {len(all_results)} documents")
         return all_results
+
+    def get_custom_summary(self, doc_id, corpus, filters=None, focus=None) -> Dict:
+        """Get an LLM-generated custom summary for a single document.
+
+        Parameters
+        ----------
+        doc_id : str
+            Document id to summarize (a single transcript/filing id).
+        corpus : str
+            One of 'transcripts', 'sec', 'nonsec'.
+        filters : dict, optional
+            Filters used to scope which sentences of the document are summarized
+            (same shape as the smart-search filters object). Also narrows the
+            focus/lens of the generated summary.
+        focus : str, optional
+            Free-text topic to focus the summary on.
+
+        Returns
+        -------
+        dict
+            {'title': str, 'sentences': list[dict], 'id': str}
+        """
+        if not doc_id:
+            raise ValueError("'doc_id' must be specified")
+
+        if corpus not in self._platform_corpus_map:
+            raise ValueError(f"corpus must be one of {list(self._platform_corpus_map.keys())}")
+        platform_corpus_name = self._platform_corpus_map[corpus]
+
+        request_obj = {'docId': doc_id, 'corpus': platform_corpus_name}
+        if filters:
+            request_obj['filters'] = json.dumps(filters)
+        if focus:
+            request_obj['focus'] = focus
+
+        requestResult, url = PerformRequest(self._base_headers, self._URL_Platform_Custom_Summary,
+                                            request_obj=request_obj, method='GET')
+
+        self._user_stats.track(event_name='SDK Get Custom Summary',
+                               properties={'endpoint': url, 'corpus': corpus, 'docId': doc_id, 'focus': focus})
+
+        return requestResult
 
     def delete_fief_model(self, modelName):
         if self._authToken is None:

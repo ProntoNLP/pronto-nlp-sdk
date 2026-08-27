@@ -332,6 +332,41 @@ filters = pronto.get_smart_search_filters(corpus='sec')
 ```
 
 &nbsp;
+### Document Custom Summary
+
+The SDK allows users to generate an LLM-written summary of a single document — optionally scoped to a topic or set of filters.
+
+Users can generate a summary using the `get_custom_summary` function.
+
+Input parameters include:
+- `doc_id`: document id to summarize, e.g. a `transcriptId` from `get_company_documents` or `run_smart_search`/`run_topic_research` results (required)
+- `corpus`: `'transcripts'`, `'sec'`, or `'nonsec'` (required)
+- `filters`: filters object to scope which sentences of the document are summarized, same shape as `run_smart_search` filters (optional)
+- `focus`: free-text topic to focus the summary on, e.g. `'margins'` or `'AI investment'` (optional)
+
+```python
+nvda = pronto.getCompanyId('NVIDIA')
+nvda_id = nvda[0]['id']
+
+docs = pronto.get_company_documents(companies=[nvda_id], corpus='transcripts', doc_type='Earnings Calls', nResults=1)
+doc_id = docs[0]['transcriptId']
+
+summary = pronto.get_custom_summary(doc_id=doc_id, corpus='transcripts', focus='data center revenue')
+```
+
+The result contains a `title`, a list of `sentences` (each with `text` and `sources`), and an `id`:
+```python
+{
+    'title': 'Data Center Revenue Growth',
+    'sentences': [
+        {'text': 'Data center revenue rose 112% YoY to $22.6B...', 'sources': [...]},
+        ...
+    ],
+    'id': '...'
+}
+```
+
+&nbsp;
 ### Add Context to Query Results Helper
 Users may require a broader context for the query results. For example, 3 sentences before and after the event or matched result. To retreive result context, use the 'get_context' helper function. 
 
