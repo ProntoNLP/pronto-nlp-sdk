@@ -42,6 +42,7 @@ These are the main functions powered by the PlatformAPI Module:
 3. Corpus Smart Search
 4. Topic Research
 5. Company Document Retrieval
+6. Document Summaries
 
 &nbsp;
 ### Document Management and Analytics
@@ -332,15 +333,17 @@ filters = pronto.get_smart_search_filters(corpus='sec')
 ```
 
 &nbsp;
-### Document Custom Summary
+### Document Summaries
 
-The SDK allows users to generate an LLM-written summary of a single document — optionally scoped to a topic or set of filters.
+The SDK allows users to generate LLM-written summaries of a single document — a flexible custom summary, plus the same three pre-built "outlook" summaries surfaced on the ProntoNLP platform: management predictions, main risks, and key analyst questions.
 
-Users can generate a summary using the `get_document_custom_summary` function.
-
-Input parameters include:
-- `doc_id`: document id to summarize, e.g. a `transcriptId` from `get_company_documents` or `run_smart_search`/`run_topic_research` results (required)
+All four functions take:
+- `doc_id`: document id, e.g. a `transcriptId` from `get_company_documents` or `run_smart_search`/`run_topic_research` results (required)
 - `corpus`: `'transcripts'`, `'sec'`, or `'nonsec'` (required)
+
+**Custom Summary**
+
+`get_document_custom_summary(doc_id, corpus, filters=None, focus=None)` also accepts:
 - `filters`: filters object to scope which sentences of the document are summarized, same shape as `run_smart_search` filters (optional)
 - `focus`: free-text topic to focus the summary on, e.g. `'margins'` or `'AI investment'` (optional)
 
@@ -366,18 +369,11 @@ The result contains a `title`, a list of `sentences` (each with `text` and `sour
 }
 ```
 
-&nbsp;
-### Document Outlook Summaries (Predictions, Risks, Questions)
-
-The SDK also allows users to retrieve three pre-built LLM summaries for a single document — the same "outlook" summaries surfaced on the ProntoNLP platform: management predictions, main risks, and key analyst questions.
+**Outlook Summaries: Predictions, Risks, Questions**
 
 - `get_document_predictions_summary(doc_id, corpus)`
 - `get_document_risks_summary(doc_id, corpus)`
 - `get_document_questions_summary(doc_id, corpus)`
-
-Input parameters include:
-- `doc_id`: document id, e.g. a `transcriptId` from `get_company_documents` (required)
-- `corpus`: `'transcripts'`, `'sec'`, or `'nonsec'` (required)
 
 Each returns a list of summary points, each with `text` and `sources`:
 ```python
