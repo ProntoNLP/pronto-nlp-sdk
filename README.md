@@ -336,7 +336,7 @@ filters = pronto.get_smart_search_filters(corpus='sec')
 
 The SDK allows users to generate an LLM-written summary of a single document — optionally scoped to a topic or set of filters.
 
-Users can generate a summary using the `get_custom_summary` function.
+Users can generate a summary using the `get_document_custom_summary` function.
 
 Input parameters include:
 - `doc_id`: document id to summarize, e.g. a `transcriptId` from `get_company_documents` or `run_smart_search`/`run_topic_research` results (required)
@@ -351,7 +351,7 @@ nvda_id = nvda[0]['id']
 docs = pronto.get_company_documents(companies=[nvda_id], corpus='transcripts', doc_type='Earnings Calls', nResults=1)
 doc_id = docs[0]['transcriptId']
 
-summary = pronto.get_custom_summary(doc_id=doc_id, corpus='transcripts', focus='data center revenue')
+summary = pronto.get_document_custom_summary(doc_id=doc_id, corpus='transcripts', focus='data center revenue')
 ```
 
 The result contains a `title`, a list of `sentences` (each with `text` and `sources`), and an `id`:

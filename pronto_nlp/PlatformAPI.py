@@ -452,7 +452,7 @@ class ProntoPlatformAPI:
         print(f"Found {len(all_results)} documents")
         return all_results
 
-    def get_custom_summary(self, doc_id, corpus, filters=None, focus=None) -> Dict:
+    def get_document_custom_summary(self, doc_id, corpus, filters=None, focus=None) -> Dict:
         """Get an LLM-generated custom summary for a single document.
 
         Parameters
